@@ -2,11 +2,11 @@
 "use client";
 
 import React, { useState } from "react";
-import { Button } from "@/src/components/Button";
-import { Card } from "@/src/components/Card";
-import { Input } from "@/src/components/Input";
-import { Spinner } from "@/src/components/Spinner";
-import { Select } from "@/src/components/Select";
+import { Button } from "@/components/Button";
+import { Card } from "@/components/Card";
+import { Input } from "@/components/Input";
+import { Spinner } from "@/components/Spinner";
+import { Select } from "@/components/Select";
 
 import { auth, db } from "../../../lib/firebase/client";
 import {
