@@ -1,5 +1,4 @@
 // bua/pages/ReportIssuePage.tsx
-
 import React, { useState } from "react";
 import type { Case, User } from "../../types";
 import { CaseStatus as CaseStatusEnum } from "../../types";
@@ -12,18 +11,13 @@ import { Input } from "@/components/Input";
 import { Spinner } from "@/components/Spinner";
 
 import { db, storage } from "../lib/firebase/client";
-import {
-  addDoc,
-  collection,
-  serverTimestamp,
-} from "firebase/firestore";
+import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 
 interface ReportIssuePageProps {
   onNavigate: (page: string) => void;
   context: any;
   currentUser: User;
-  
   addCase?: (c: Case) => Promise<void>;
 }
 
@@ -34,7 +28,6 @@ const ReportIssuePage: React.FC<ReportIssuePageProps> = ({ onNavigate, context, 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  
   const guessEvidenceType = (file: File | null) => {
     if (!file) return "unknown";
     const t = file.type || "";
@@ -56,28 +49,26 @@ const ReportIssuePage: React.FC<ReportIssuePageProps> = ({ onNavigate, context, 
     setIsSubmitting(true);
 
     try {
-      
+      // redact PII
       const redactedDescription = await geminiService.redactPII(description);
 
-      
+      // upload evidence (if any)
       let evidenceUrl: string | null = null;
       let evidenceType: string | null = null;
       if (evidence) {
         const fileNameSafe = `${Date.now()}_${(evidence.name || "evidence").replace(/\s+/g, "_")}`;
         const sRef = storageRef(storage, `evidence/${currentUser.id}/${fileNameSafe}`);
-        
         await uploadBytes(sRef, evidence);
-        
         evidenceUrl = await getDownloadURL(sRef);
         evidenceType = guessEvidenceType(evidence);
       }
 
-      
+      // prepare payload: use client-side Date() for history timestamps (serverTimestamp() can't go inside arrays)
+      const now = new Date();
       const casePayload: any = {
         studentId: currentUser.id,
-        title: (description.length > 60 ? description.slice(0, 60) + "..." : description),
+        title: description.length > 60 ? description.slice(0, 60) + "..." : description,
         category,
-        
         description,
         redactedDescription,
         status: CaseStatusEnum.Submitted,
@@ -86,30 +77,23 @@ const ReportIssuePage: React.FC<ReportIssuePageProps> = ({ onNavigate, context, 
             id: `msg${Date.now()}`,
             sender: "Student",
             text: "Case submitted.",
-            timestamp: serverTimestamp(),
+            timestamp: now, // <-- client Date()
           },
         ],
-        createdAt: serverTimestamp(),
+        createdAt: serverTimestamp(), // top-level server timestamp is OK
         resolutionNote: "",
       };
 
-      
       if (evidenceUrl) {
         casePayload.evidenceUrl = evidenceUrl;
         casePayload.evidenceType = evidenceType;
-        
-        casePayload.evidence = {
-          count: 1,
-          type: evidenceType,
-        };
+        casePayload.evidence = { count: 1, type: evidenceType };
       }
 
-      
       const docRef = await addDoc(collection(db, "cases"), casePayload);
 
-      
+      // optionally inform parent local state
       if (addCase) {
-        
         const createdCase: Case = {
           id: docRef.id,
           studentId: currentUser.id,
@@ -117,24 +101,26 @@ const ReportIssuePage: React.FC<ReportIssuePageProps> = ({ onNavigate, context, 
           category,
           description,
           redactedDescription,
-          evidence: null, 
+          evidence: null,
           status: CaseStatusEnum.Submitted,
           history: [
             {
               id: `msg${Date.now()}`,
               sender: "Student",
               text: "Case submitted.",
-              timestamp: new Date(),
+              timestamp: now,
             },
           ],
           resolutionNote: "",
-          createdAt: new Date(),
+          createdAt: now,
         };
-        
-        try { await addCase(createdCase); } catch (_) { /* ignore */ }
+        try {
+          await addCase(createdCase);
+        } catch (_) {
+          // ignore if parent can't handle it
+        }
       }
 
-      
       onNavigate("tracker");
     } catch (err) {
       console.error("Failed to submit case:", err);

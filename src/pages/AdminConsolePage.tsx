@@ -22,7 +22,6 @@ import {
 
 type FilterStatus = CaseStatus | "all";
 
-
 const ConfirmModal: React.FC<{
   open: boolean;
   title?: string;
@@ -64,7 +63,6 @@ const AdminConsolePage: React.FC = () => {
     updates: Record<string, any>;
   } | null>(null);
 
-  
   useEffect(() => {
     const q = query(collection(db, "cases"), orderBy("createdAt", "desc"));
     const unsub = onSnapshot(
@@ -108,20 +106,21 @@ const AdminConsolePage: React.FC = () => {
 
   const buildUpdates = (sc: Case | null) => {
     if (!sc) return null;
+
+    // NOTE: serverTimestamp() is NOT allowed inside arrays. use new Date() for array element timestamps.
     const historyEntry = adminMessage.trim()
       ? {
           id: `msg${Date.now()}`,
           sender: "Admin",
           text: adminMessage.trim(),
-          timestamp: serverTimestamp(),
+          timestamp: new Date(), // client-side timestamp for array element
         }
       : null;
 
     const updates: Record<string, any> = {};
-    
+
     if (newStatus) updates.status = newStatus;
     if (historyEntry) {
-      
       updates.history = [
         ...(sc.history?.map((h) => ({
           id: h.id,
@@ -145,9 +144,9 @@ const AdminConsolePage: React.FC = () => {
       const caseRef = doc(db, "cases", caseId);
       await updateDoc(caseRef, {
         ...updates,
-        updatedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(), // OK at top-level
       });
-      
+
       setAdminMessage("");
       setNewStatus("");
     } catch (err) {
@@ -162,11 +161,9 @@ const AdminConsolePage: React.FC = () => {
     if (!selectedCase) return;
     const updates = buildUpdates(selectedCase);
     if (!updates || Object.keys(updates).length === 0) {
-     
       return;
     }
 
-    
     const targetStatus = updates.status as CaseStatus | undefined;
     if (targetStatus === CaseStatusEnum.Resolved || targetStatus === CaseStatusEnum.Closed) {
       setPendingUpdatePayload({ caseId: selectedCase.id, updates });
@@ -174,7 +171,6 @@ const AdminConsolePage: React.FC = () => {
       return;
     }
 
-  
     performUpdate(selectedCase.id, updates);
   };
 
@@ -190,7 +186,6 @@ const AdminConsolePage: React.FC = () => {
     setPendingUpdatePayload(null);
   };
 
- 
   const filteredCases = filterStatus === "all" ? cases : cases.filter((c) => c.status === filterStatus);
 
   const sortedCases = [...filteredCases].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());

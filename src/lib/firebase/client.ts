@@ -1,4 +1,4 @@
-//bua/src/lib/firebase/client.ts
+// bua/src/lib/firebase/client.ts
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
@@ -8,7 +8,8 @@ const firebaseConfig = {
   apiKey: "AIzaSyCO_kPbTBt_OBIqaxok1MJRVkQfeHHs4dU",
   authDomain: "saas-3ea29.firebaseapp.com",
   projectId: "saas-3ea29",
-  storageBucket: "saas-3ea29.firebasestorage.app",
+  // use the appspot.com bucket name (check Firebase Console -> Storage -> Bucket name)
+  storageBucket: "saas-3ea29.appspot.com",
   messagingSenderId: "531029578425",
   appId: "1:531029578425:web:60929443c0d27526fac168",
   measurementId: "G-TP0QN1TR6B"
