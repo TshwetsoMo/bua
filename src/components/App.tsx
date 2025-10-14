@@ -8,14 +8,14 @@ import { IconUserCircle } from "./Icons";
 import { Select } from "./Select";
 import { Button } from "./Button";
 
-import { useCases } from "../../hooks/useCase";
-import { useJournal } from "../../hooks/useJournal";
+import { useCases } from "../hooks/useCase";
+import { useJournal } from "../hooks/useJournal";
 
-import AIAdvisorPage from "../../pages/AIAdvisorPage";
-import ReportIssuePage from "../../pages/ReportIssuePage";
-import CaseTrackerPage from "../../pages/CaseTrackerPage";
-import AdminConsolePage from "../../pages/AdminConsolePage";
-import JournalPage from "../../pages/JournalPage";
+import AIAdvisorPage from "../pages/AIAdvisorPage";
+import ReportIssuePage from "../pages/ReportIssuePage";
+import CaseTrackerPage from "../pages/CaseTrackerPage";
+import AdminConsolePage from "../pages/AdminConsolePage";
+import JournalPage from "../pages/JournalPage";
 
 interface AppProps {
   currentUser: User;
