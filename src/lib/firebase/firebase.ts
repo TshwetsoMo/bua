@@ -1,6 +1,6 @@
 //bua/src/lib/firebase/firebase.ts
-import type { Role, User, Case, JournalEntry } from '../../../types';
-import { Role as RoleEnum, CaseStatus as CaseStatusEnum } from '../../../types';
+import type { Role, User, Case, JournalEntry } from '@../../../types';
+import { Role as RoleEnum, CaseStatus as CaseStatusEnum } from '@../../../types';
 
 
 
