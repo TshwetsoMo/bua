@@ -7,8 +7,9 @@ import { Card } from "@/components/Card";
 import { Input } from "@/components/Input";
 import { Spinner } from "@/components/Spinner";
 
-import { auth } from "../../../lib/firebase/client";
+import { auth, db } from "../../../lib/firebase/client";
 import { signInWithEmailAndPassword, User as FirebaseUser } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
 
 import { User as DomainUser, Role } from "../../../../types";
 
@@ -17,18 +18,20 @@ interface SignInPageProps {
   onSignInSuccess: (user: DomainUser) => void;
 }
 
+function buildDomainUserFromFirebase(u: FirebaseUser, profileData?: any): DomainUser {
+  const fallbackName = u.displayName ?? u.email?.split("@")[0] ?? "Student";
 
-function toDomainUser(u: FirebaseUser): DomainUser {
-  
-  const fallbackName =
-    u.email?.split("@")[0] ??
-    "Student";
+  const roleFromProfile =
+    profileData && typeof profileData.role !== "undefined"
+      ? Number(profileData.role)
+      : Role.Student;
 
-  
+  const nameFromProfile = profileData && profileData.name ? String(profileData.name) : fallbackName;
+
   return {
     id: u.uid,
-    name: u.displayName ?? fallbackName,
-    role: Role.Student,
+    name: nameFromProfile,
+    role: Number.isNaN(roleFromProfile) ? Role.Student : (roleFromProfile as Role),
   };
 }
 
@@ -44,7 +47,21 @@ const SignInPage: React.FC<SignInPageProps> = ({ onSignUp, onSignInSuccess }) =>
     setIsLoading(true);
     try {
       const cred = await signInWithEmailAndPassword(auth, email, password);
-      onSignInSuccess(toDomainUser(cred.user));
+      const fbUser = cred.user;
+
+      // attempt to read profile doc to get role/name if present
+      let profileData: any = null;
+      try {
+        const ref = doc(db, "users", fbUser.uid);
+        const snap = await getDoc(ref);
+        if (snap.exists()) profileData = snap.data();
+      } catch (err) {
+        // non-fatal — we'll fallback to defaults
+        console.warn("Failed to fetch user profile doc:", err);
+      }
+
+      const domainUser = buildDomainUserFromFirebase(fbUser, profileData);
+      onSignInSuccess(domainUser);
     } catch (err: any) {
       const msg =
         err?.code === "auth/invalid-email"
@@ -53,7 +70,7 @@ const SignInPage: React.FC<SignInPageProps> = ({ onSignUp, onSignInSuccess }) =>
           ? "Invalid email or password. Please try again."
           : err?.code === "auth/too-many-requests"
           ? "Too many attempts. Please wait a moment and try again."
-          : "An unexpected error occurred. Please try again.";
+          : err?.message || "An unexpected error occurred. Please try again.";
       setError(msg);
     } finally {
       setIsLoading(false);
@@ -117,4 +134,5 @@ const SignInPage: React.FC<SignInPageProps> = ({ onSignUp, onSignInSuccess }) =>
 };
 
 export default SignInPage;
+
 

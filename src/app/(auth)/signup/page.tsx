@@ -53,18 +53,24 @@ const SignUpPage: React.FC<SignUpPageProps> = ({ onSignIn, onSignUpSuccess }) =>
       const cred = await createUserWithEmailAndPassword(auth, email, password);
 
       // 2) set displayName for convenience in client
-      await updateProfile(cred.user, { displayName: name });
+      if (name && name.trim()) {
+        try {
+          await updateProfile(cred.user, { displayName: name.trim() });
+        } catch (err) {
+          console.warn("updateProfile failed:", err);
+        }
+      }
 
       // 3) create users/{uid} profile doc (stores role, name, metadata)
       await setDoc(doc(db, "users", cred.user.uid), {
-        name,
-        role, 
+        name: name || cred.user.displayName || email.split("@")[0],
+        role,
         email,
         createdAt: serverTimestamp(),
       });
 
       // 4) return your domain user
-      onSignUpSuccess(toDomainUser(cred.user, role, name));
+      onSignUpSuccess(toDomainUser(cred.user, role, name || email.split("@")[0]));
     } catch (err: any) {
       const msg =
         err?.code === "auth/email-already-in-use"
@@ -159,3 +165,4 @@ const SignUpPage: React.FC<SignUpPageProps> = ({ onSignIn, onSignUpSuccess }) =>
 };
 
 export default SignUpPage;
+
