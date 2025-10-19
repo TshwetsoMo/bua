@@ -8,7 +8,6 @@ const firebaseConfig = {
   apiKey: "AIzaSyCO_kPbTBt_OBIqaxok1MJRVkQfeHHs4dU",
   authDomain: "saas-3ea29.firebaseapp.com",
   projectId: "saas-3ea29",
-  // use the appspot.com bucket name (check Firebase Console -> Storage -> Bucket name)
   storageBucket: "saas-3ea29.appspot.com",
   messagingSenderId: "531029578425",
   appId: "1:531029578425:web:60929443c0d27526fac168",

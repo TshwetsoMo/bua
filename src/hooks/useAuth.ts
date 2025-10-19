@@ -1,4 +1,4 @@
-// bua/hooks/useAuth.ts 
+// bua/hooks/useAuth.ts
 "use client";
 
 import { useEffect, useState } from "react";
@@ -13,34 +13,50 @@ type AuthPage = "signin" | "signup";
 export const useAuth = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [activeAuthPage, setActiveAuthPage] = useState<AuthPage>("signin");
+  const [initializing, setInitializing] = useState<boolean>(true); // <-- new
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (fbUser) => {
-      if (!fbUser) {
+      try {
+        if (!fbUser) {
+          setCurrentUser(null);
+          setInitializing(false);
+          return;
+        }
+
+        // attempt to read profile doc to get role/name if present
+        let roleValue = Role.Student;
+        let nameValue = fbUser.displayName ?? fbUser.email?.split("@")[0] ?? "Student";
+
+        try {
+          const ref = doc(db, "users", fbUser.uid);
+          const snap = await getDoc(ref);
+          if (snap.exists()) {
+            const data = snap.data();
+            if (typeof data.role !== "undefined") roleValue = Number(data.role);
+            if (data.name) nameValue = String(data.name);
+          }
+        } catch (err) {
+          // non-fatal; keep defaults
+          console.warn("Failed to fetch user profile doc:", err);
+        }
+
+        setCurrentUser({
+          id: fbUser.uid,
+          name: nameValue,
+          role: Number.isNaN(roleValue) ? Role.Student : (roleValue as Role),
+        });
+      } catch (e) {
+        console.error("useAuth onAuthStateChanged handler error:", e);
         setCurrentUser(null);
-        return;
+      } finally {
+        setInitializing(false);
       }
-      
-      const ref = doc(db, "users", fbUser.uid);
-      const snap = await getDoc(ref);
-
-      const roleValue =
-        (snap.exists() ? (snap.data().role as number) : undefined) ?? Role.Student;
-      const nameValue =
-        (snap.exists() ? (snap.data().name as string) : undefined) ??
-        fbUser.displayName ??
-        fbUser.email?.split("@")[0] ??
-        "Student";
-
-      setCurrentUser({
-        id: fbUser.uid,
-        name: nameValue,
-        role: roleValue,
-      });
     });
 
     return () => unsub();
   }, []);
 
-  return { currentUser, setCurrentUser, activeAuthPage, setActiveAuthPage };
+  return { currentUser, setCurrentUser, activeAuthPage, setActiveAuthPage, initializing };
 };
+
