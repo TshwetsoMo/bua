@@ -4,7 +4,7 @@ import { GoogleGenAI } from "@google/genai";
 import admin from "firebase-admin";
 
 // Initialize Firebase Admin SDK
-if (!admin.apps?.length) {
+if (!admin.apps.length) {
   try {
     admin.initializeApp();
   } catch (e) {
@@ -38,23 +38,36 @@ export async function POST(req: NextRequest) {
     const idToken = authHeader.startsWith("Bearer ")
       ? authHeader.split("Bearer ")[1].trim()
       : null;
-    if (!idToken) return NextResponse.json({ error: "Authorization header required" }, { status: 401 });
+
+    if (!idToken)
+      return NextResponse.json(
+        { error: "Authorization header required" },
+        { status: 401 }
+      );
 
     let decoded: admin.auth.DecodedIdToken;
     try {
       decoded = await admin.auth().verifyIdToken(idToken);
     } catch (err) {
       console.error("verifyIdToken failed", err);
-      return NextResponse.json({ error: "Invalid or expired ID token" }, { status: 401 });
+      return NextResponse.json(
+        { error: "Invalid or expired ID token" },
+        { status: 401 }
+      );
     }
+
     const uid = decoded.uid;
 
     // Parse request body
     const body = await req.json().catch(() => ({}));
     const message = typeof body.message === "string" ? body.message.trim() : "";
-    let chatId = typeof body.chatId === "string" && body.chatId.trim() ? body.chatId.trim() : null;
+    let chatId =
+      typeof body.chatId === "string" && body.chatId.trim()
+        ? body.chatId.trim()
+        : null;
 
-    if (!message) return NextResponse.json({ error: "message required" }, { status: 400 });
+    if (!message && !chatId)
+      return NextResponse.json({ error: "message required" }, { status: 400 });
 
     const chatsColl = db.collection("aiChats");
     let rawHistory: StoredMsg[] = [];
@@ -80,39 +93,59 @@ export async function POST(req: NextRequest) {
       // Handle existing chat
       chatRef = chatsColl.doc(chatId);
       const chatSnap = await chatRef.get();
-      if (!chatSnap.exists) return NextResponse.json({ error: "chat not found" }, { status: 404 });
+      if (!chatSnap.exists)
+        return NextResponse.json({ error: "chat not found" }, { status: 404 });
 
-      const chatData = chatSnap.data() as any;
-      if (chatData.ownerUid !== uid) return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+      const chatData = chatSnap.data();
+      if (!chatData)
+        return NextResponse.json(
+          { error: "chat data missing" },
+          { status: 500 }
+        );
+
+      if (chatData.ownerUid !== uid)
+        return NextResponse.json({ error: "Not authorized" }, { status: 403 });
 
       rawHistory = Array.isArray(chatData.history) ? chatData.history : [];
-      rawHistory.push({ role: "user", text: message, ts: admin.firestore.FieldValue.serverTimestamp() as any });
-
-      await chatRef.update({ history: rawHistory, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+      if (message) {
+        rawHistory.push({ role: "user", text: message, ts: admin.firestore.FieldValue.serverTimestamp() as any });
+        await chatRef.update({
+          history: rawHistory,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      }
     }
 
-    // Send message to Gemini
+    // Convert history to SDK format and send to AI
     const sdkHistory = toSdkHistory(rawHistory);
     const chat = ai.chats.create({ model: MODEL, history: sdkHistory });
-    const reply = await chat.sendMessage({ message });
 
-    // Extract assistant text safely
+    const reply = message ? await chat.sendMessage({ message }) : null;
+
+    // Extract AI reply safely
     const assistantText =
       reply?.text ??
       (reply?.candidates && reply.candidates[0]?.content?.parts
         ? reply.candidates[0].content.parts.map((p) => p.text).join(" ")
-        : "No response received.");
+        : null);
 
-    // Append assistant reply to Firestore
-    rawHistory.push({ role: "model", text: assistantText, ts: admin.firestore.FieldValue.serverTimestamp() as any });
-    await chatRef.update({ history: rawHistory, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+    if (assistantText) {
+      rawHistory.push({ role: "model", text: assistantText, ts: admin.firestore.FieldValue.serverTimestamp() as any });
+      await chatRef.update({
+        history: rawHistory,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    }
 
-    // Return response to client
-    return NextResponse.json({ chatId, text: assistantText });
+    return NextResponse.json({ chatId, text: assistantText, history: rawHistory });
   } catch (err: any) {
     console.error("[/api/ai/gemini/chat] error:", err);
-    return NextResponse.json({ error: "Failed to handle chat message" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to handle chat message" },
+      { status: 500 }
+    );
   }
 }
+
 
 
