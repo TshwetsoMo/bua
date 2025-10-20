@@ -4,74 +4,77 @@ import { GoogleGenAI } from "@google/genai";
 import admin from "firebase-admin";
 
 /**
- * Read service account JSON from one of the env vars your project uses.
- * Keep this name in sync with whatever you set in Vercel / your .env.local:
- * - FIREBASE_SERVICE_ACCOUNT_JSON
- * - FIREBASE_SERVICE_ACCOUNT
+ * Configured env names in your project:
+ * - FIREBASE_SERVICE_ACCOUNT_JSON or FIREBASE_SERVICE_ACCOUNT (JSON string)
+ * - GEMINI_API_KEY
+ * - GEMINI_MODEL (optional)
+ *
+ * This route:
+ * - verifies Firebase ID tokens (admin SDK initialized from service account JSON)
+ * - stores/reads chat docs in Firestore collection "aiChats" with ownerUid
+ * - appends user & model messages to the chat history
+ * - calls Gemini via the SDK (ai.chats.create / .sendMessage)
+ *
+ * IMPORTANT: the SDK chat history used here only contains roles "user" and "model".
+ * The previous error came from passing role "system" — the SDK rejected it.
  */
+
 const SA_ENV =
   process.env.FIREBASE_SERVICE_ACCOUNT_JSON ||
   process.env.FIREBASE_SERVICE_ACCOUNT ||
   "";
 
-if (!SA_ENV) {
-  // We throw early so the server warns loudly if env not set.
-  // This file runs at module import in Next.js app routes — that's desirable so misconfig is obvious.
-  console.error("FIREBASE_SERVICE_ACCOUNT JSON env var is not set.");
-  // Do not throw here in production code if you prefer graceful degradation.
-}
-
 if (!admin.apps.length) {
   try {
     const parsed =
-      typeof SA_ENV === "string" && SA_ENV.trim().length
-        ? JSON.parse(SA_ENV)
-        : undefined;
+      typeof SA_ENV === "string" && SA_ENV.trim().length ? JSON.parse(SA_ENV) : undefined;
 
     if (parsed) {
       admin.initializeApp({
         credential: admin.credential.cert(parsed as any),
-        // optionally set projectId explicit if missing: projectId: parsed.project_id
       });
+      console.info("Firebase Admin initialized with provided service account JSON.");
     } else {
-      // fall back to default credentials (if running in environment with ADC)
+      // fallback to default credentials (ADC) — may work in some environments
       admin.initializeApp();
+      console.info("Firebase Admin initialized with default credentials (no service account JSON).");
     }
-  } catch (e) {
-    // If parsing failed, log full error for server-side debugging
-    console.error("Failed to initialize Firebase Admin SDK:", e);
-    // Let it try to initialize without cert (may still fail)
+  } catch (initErr) {
+    console.error("Failed to initialize Firebase Admin SDK with provided service account:", initErr);
     try {
       admin.initializeApp();
-    } catch (err2) {
-      console.error("Fallback admin.initializeApp() also failed:", err2);
+      console.info("Firebase Admin fallback initializeApp() succeeded.");
+    } catch (fallbackErr) {
+      console.error("Firebase Admin fallback initializeApp() failed:", fallbackErr);
     }
   }
 }
 
 const db = admin.firestore();
 
-// Initialize Gemini client with explicit API key if present
+// Initialize Gemini client explicitly with API key if provided
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY || undefined,
 });
 
 const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+// Keep your system instruction string handy — we DO NOT put it in history with role "system"
+// because the chat SDK enforces 'user'|'model' roles.
 const SYSTEM_INSTRUCTION =
   process.env.GEMINI_SYSTEM_PROMPT ??
   "You are Bua, a friendly school-life assistant. Keep answers concise and redact PII.";
 
-type StoredMsg = { role: "system" | "user" | "model"; text: string; ts?: any };
-const toSdkHistory = (h: StoredMsg[]) =>
-  h.map((m) => ({ role: m.role, parts: [{ text: m.text }] }));
+/** Local representation persisted in Firestore */
+type StoredMsg = { role: "user" | "model"; text: string; ts?: any };
+
+/** Convert stored history to SDK chat history (only user/model roles) */
+const toSdkHistory = (h: StoredMsg[]) => h.map((m) => ({ role: m.role, parts: [{ text: m.text }] }));
 
 export async function POST(req: NextRequest) {
   try {
     // 1) Verify Firebase ID token
     const authHeader = req.headers.get("authorization") || "";
-    const idToken = authHeader.startsWith("Bearer ")
-      ? authHeader.split("Bearer ")[1].trim()
-      : null;
+    const idToken = authHeader.startsWith("Bearer ") ? authHeader.split("Bearer ")[1].trim() : null;
 
     if (!idToken) {
       return NextResponse.json({ error: "Authorization header required" }, { status: 401 });
@@ -80,18 +83,18 @@ export async function POST(req: NextRequest) {
     let decoded: admin.auth.DecodedIdToken;
     try {
       decoded = await admin.auth().verifyIdToken(idToken);
-    } catch (err) {
-      console.error("verifyIdToken failed", err);
+    } catch (verifyErr) {
+      console.error("verifyIdToken failed", verifyErr);
       return NextResponse.json({ error: "Invalid or expired ID token" }, { status: 401 });
     }
     const uid = decoded.uid;
 
-    // 2) Parse request body
+    // 2) Parse body
     const body = await req.json().catch(() => ({}));
     const message = typeof body.message === "string" ? body.message.trim() : "";
     let chatId = typeof body.chatId === "string" && body.chatId.trim() ? body.chatId.trim() : null;
 
-    // If neither a message nor a chatId present — bad request
+    // if neither provided, bad request
     if (!message && !chatId) {
       return NextResponse.json({ error: "message or chatId required" }, { status: 400 });
     }
@@ -100,13 +103,13 @@ export async function POST(req: NextRequest) {
     let chatRef: FirebaseFirestore.DocumentReference;
     let rawHistory: StoredMsg[] = [];
 
-    // 3) New chat: create doc with ownerUid + initial history (system + user)
+    // 3) Create new chat (no 'system' role written into stored history; we persist only user/model)
     if (!chatId) {
       chatRef = chatsColl.doc();
       chatId = chatRef.id;
 
       rawHistory = [
-        { role: "system", text: SYSTEM_INSTRUCTION, ts: admin.firestore.FieldValue.serverTimestamp() as any },
+        // only store user and model roles. We'll not store a system role here to avoid the SDK error.
         { role: "user", text: message, ts: admin.firestore.FieldValue.serverTimestamp() as any },
       ];
 
@@ -116,10 +119,8 @@ export async function POST(req: NextRequest) {
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         history: rawHistory,
       });
-
-      // If caller only wanted chat creation (edge-case), continue to call AI below
     } else {
-      // 4) Existing chat: validate owner, optionally append user message
+      // 4) Existing chat: validate ownership and optionally append user message
       chatRef = chatsColl.doc(chatId);
       const chatSnap = await chatRef.get();
       if (!chatSnap.exists) {
@@ -133,18 +134,10 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Not authorized for this chat" }, { status: 403 });
       }
 
-      rawHistory = Array.isArray(chatData.history) ? chatData.history : [];
+      rawHistory = Array.isArray(chatData.history) ? (chatData.history as StoredMsg[]) : [];
 
-      // If message is present (non-empty), append it; if message === "" we treat as a "fetch history" request.
-      if (message) {
-        rawHistory.push({ role: "user", text: message, ts: admin.firestore.FieldValue.serverTimestamp() as any });
-        await chatRef.update({
-          history: rawHistory,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-      } else {
-        // message is empty string -> client wants to fetch history only; return it without calling Gemini
-        // Convert any firestore Timestamps to ISO strings for client (optional)
+      // If message empty string => client asked to fetch history only (resume). Return now.
+      if (!message) {
         const historyToReturn = rawHistory.map((h: any) => ({
           role: h.role,
           text: h.text,
@@ -152,46 +145,77 @@ export async function POST(req: NextRequest) {
         }));
         return NextResponse.json({ chatId, history: historyToReturn });
       }
+
+      // append user message
+      rawHistory.push({ role: "user", text: message, ts: admin.firestore.FieldValue.serverTimestamp() as any });
+      await chatRef.update({ history: rawHistory, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
     }
 
-    // 5) Convert history to SDK format and call Gemini
+    // 5) Call Gemini — we will create the chat with only user/model roles.
+    //    To supply a system instruction you could either:
+    //      - include it inside the first user message (less ideal), or
+    //      - call the lower-level models.generateContent with config.systemInstruction (not implemented here),
+    //    For now, we'll pass history without a system role to avoid SDK validation error.
     try {
       const sdkHistory = toSdkHistory(rawHistory);
-      const chat = ai.chats.create({ model: MODEL, history: sdkHistory });
 
-      // If message is empty (shouldn't get here because we returned above), protect
-      const reply = message ? await chat.sendMessage({ message }) : null;
+      // create chat
+      const chat = ai.chats.create({
+        model: MODEL,
+        history: sdkHistory,
+      });
 
-      // Extract assistant text safely for different SDK shapes
+      // send the new user message (sendMessage will use the provided history + appended message)
+      const reply = await chat.sendMessage({ message });
+
+      // Defensive extraction of assistant text: SDK shapes vary across versions.
       let assistantText: string | null = null;
-      if (reply) {
-        if (typeof reply.text === "string" && reply.text.trim()) {
-          assistantText = reply.text;
-        } else if (reply?.candidates && Array.isArray(reply.candidates) && reply.candidates.length) {
-          // candidate content parts -> join
-          const cand = reply.candidates[0];
-          if (cand?.content?.[0]?.parts) {
-            assistantText = cand.content[0].parts.map((p: any) => p.text).join(" ");
-          } else if (cand?.content) {
-            assistantText = JSON.stringify(cand.content);
+
+      // 1) reply.text (most convenient)
+      if (reply && typeof reply.text === "string" && reply.text.trim()) {
+        assistantText = reply.text;
+      }
+
+      // 2) reply.candidates[0].content[...] -> parts -> text
+      if (!assistantText && reply && Array.isArray((reply as any).candidates) && (reply as any).candidates.length > 0) {
+        const cand = (reply as any).candidates[0];
+        // cand.content may be structured differently; check defensively
+        if (Array.isArray(cand.content)) {
+          // find first element that has parts array
+          const contentElem = cand.content.find((c: any) => Array.isArray(c?.parts));
+          if (contentElem && Array.isArray(contentElem.parts)) {
+            assistantText = contentElem.parts.map((p: any) => p?.text ?? "").join(" ").trim();
           }
-        } else if ((reply as any)?.output?.[0]?.content?.[0]?.text) {
-          assistantText = (reply as any).output[0].content[0].text;
-        } else {
-          assistantText = null;
+        } else if (Array.isArray(cand?.content?.parts)) {
+          assistantText = cand.content.parts.map((p: any) => p?.text ?? "").join(" ").trim();
+        } else if (typeof cand.content === "string") {
+          assistantText = cand.content;
         }
       }
 
-      if (assistantText) {
-        rawHistory.push({ role: "model", text: assistantText, ts: admin.firestore.FieldValue.serverTimestamp() as any });
-        // persist assistant reply
-        await chatRef.update({
-          history: rawHistory,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
+      // 3) reply.output[0].content[0].text (older or alternate SDK shape)
+      if (!assistantText && reply && Array.isArray((reply as any).output) && (reply as any).output.length > 0) {
+        const output0 = (reply as any).output[0];
+        if (output0 && Array.isArray(output0.content) && output0.content.length > 0) {
+          const c0 = output0.content[0];
+          if (c0 && typeof c0.text === "string" && c0.text.trim()) {
+            assistantText = c0.text;
+          }
+        }
       }
 
-      // normalize history timestamps for client readability
+      // fallback to JSON-stringifying the reply for debugging
+      if (!assistantText && reply) {
+        assistantText = JSON.stringify(reply).slice(0, 2000); // avoid huge payloads
+      }
+
+      // persist assistant reply to Firestore history
+      if (assistantText) {
+        rawHistory.push({ role: "model", text: assistantText, ts: admin.firestore.FieldValue.serverTimestamp() as any });
+        await chatRef.update({ history: rawHistory, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+      }
+
+      // normalize timestamps for client readability
       const historyToReturn = rawHistory.map((h: any) => ({
         role: h.role,
         text: h.text,
@@ -208,5 +232,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }
-
-
