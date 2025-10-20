@@ -10,22 +10,39 @@ import { auth, db } from "../lib/firebase/client";
 
 type AuthPage = "signin" | "signup";
 
+function normalizeRole(roleFromDoc: unknown): Role {
+  // Handle numbers, numeric strings, and string labels like "Admin"/"Student"
+  if (typeof roleFromDoc === "number") {
+    return roleFromDoc === Role.Admin ? Role.Admin : Role.Student;
+  }
+  if (typeof roleFromDoc === "string") {
+    const lower = roleFromDoc.toLowerCase().trim();
+    // numeric string?
+    const asNum = Number.parseInt(roleFromDoc, 10);
+    if (!Number.isNaN(asNum)) {
+      return asNum === Role.Admin ? Role.Admin : Role.Student;
+    }
+    // word label?
+    if (lower === "admin") return Role.Admin;
+    if (lower === "student") return Role.Student;
+  }
+  return Role.Student;
+}
+
 export const useAuth = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [activeAuthPage, setActiveAuthPage] = useState<AuthPage>("signin");
-  const [initializing, setInitializing] = useState<boolean>(true); // <-- new
+  const [initializing, setInitializing] = useState<boolean>(true);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (fbUser) => {
       try {
         if (!fbUser) {
           setCurrentUser(null);
-          setInitializing(false);
           return;
         }
 
-        // attempt to read profile doc to get role/name if present
-        let roleValue = Role.Student;
+        let roleValue: Role = Role.Student;
         let nameValue = fbUser.displayName ?? fbUser.email?.split("@")[0] ?? "Student";
 
         try {
@@ -33,21 +50,21 @@ export const useAuth = () => {
           const snap = await getDoc(ref);
           if (snap.exists()) {
             const data = snap.data();
-            if (typeof data.role !== "undefined") roleValue = Number(data.role);
+            roleValue = normalizeRole(data.role);
             if (data.name) nameValue = String(data.name);
           }
         } catch (err) {
-          // non-fatal; keep defaults
+          // Keep defaults if the profile doc can't be read
           console.warn("Failed to fetch user profile doc:", err);
         }
 
         setCurrentUser({
           id: fbUser.uid,
           name: nameValue,
-          role: Number.isNaN(roleValue) ? Role.Student : (roleValue as Role),
+          role: roleValue,
         });
       } catch (e) {
-        console.error("useAuth onAuthStateChanged handler error:", e);
+        console.error("useAuth onAuthStateChanged error:", e);
         setCurrentUser(null);
       } finally {
         setInitializing(false);
@@ -59,4 +76,3 @@ export const useAuth = () => {
 
   return { currentUser, setCurrentUser, activeAuthPage, setActiveAuthPage, initializing };
 };
-

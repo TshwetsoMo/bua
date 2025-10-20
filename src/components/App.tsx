@@ -1,7 +1,7 @@
 // bua/src/components/App.tsx
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import type { Role, User } from "../../types";
 import { Role as RoleEnum } from "../../types";
 import { IconUserCircle } from "./Icons";
@@ -22,26 +22,26 @@ interface AppProps {
 }
 
 export default function App({ currentUser, onSignOut }: AppProps) {
-  // keep an internal user state so UI can update independently
-  const [user, setUser] = useState(currentUser);
-  const { cases, addCase, updateCase } = useCases(user);
+  // derive data directly from the prop (no local user copy)
+  const { cases, addCase, updateCase } = useCases(currentUser);
   const { journalEntries, addJournalEntry } = useJournal();
 
-  // Default landing page depends on role
-  const [activePage, setActivePage] = useState<string>(user.role === RoleEnum.Admin ? "admin" : "advisor");
+  // active page follows role automatically whenever currentUser changes
+  const [activePage, setActivePage] = useState<string>(
+    currentUser.role === RoleEnum.Admin ? "admin" : "advisor"
+  );
   const [pageContext, setPageContext] = useState<any>(null);
+
+  useEffect(() => {
+    // whenever identity or role changes, snap to the correct landing page
+    setActivePage(currentUser.role === RoleEnum.Admin ? "admin" : "advisor");
+    setPageContext(null);
+  }, [currentUser.id, currentUser.role]);
 
   const handleNavigate = (page: string, context: any = null) => {
     window.scrollTo(0, 0);
     setActivePage(page);
     setPageContext(context);
-  };
-
-  // When the app receives an updated user object (e.g. after sign-in), call this
-  const handleSetUser = (u: User) => {
-    setUser(u);
-    // honor role landing when user object changes
-    setActivePage(u.role === RoleEnum.Admin ? "admin" : "advisor");
   };
 
   const navLinks = {
@@ -66,12 +66,14 @@ export default function App({ currentUser, onSignOut }: AppProps) {
           <ReportIssuePage
             onNavigate={handleNavigate}
             context={pageContext}
-            currentUser={user}
-            addCase={async (newCase) => { await addCase(newCase); }}
+            currentUser={currentUser}
+            addCase={async (newCase) => {
+              await addCase(newCase);
+            }}
           />
         );
       case "tracker":
-        return <CaseTrackerPage cases={cases} currentUser={user} />;
+        return <CaseTrackerPage cases={cases} currentUser={currentUser} />;
       case "admin":
         return <AdminConsolePage cases={cases} updateCase={updateCase} />;
       case "journal":
@@ -79,7 +81,7 @@ export default function App({ currentUser, onSignOut }: AppProps) {
           <JournalPage
             entries={journalEntries}
             cases={cases}
-            currentUser={user}
+            currentUser={currentUser}
             addJournalEntry={addJournalEntry}
           />
         );
@@ -97,7 +99,7 @@ export default function App({ currentUser, onSignOut }: AppProps) {
               <h1 className="text-2xl font-bold text-blue-600 dark:text-blue-400">Bua</h1>
               <div className="hidden md:block">
                 <div className="ml-10 flex items-baseline space-x-4">
-                  {navLinks[user.role].map((link) => (
+                  {navLinks[currentUser.role].map((link) => (
                     <button
                       key={link.name}
                       onClick={() => handleNavigate(link.page)}
@@ -117,12 +119,13 @@ export default function App({ currentUser, onSignOut }: AppProps) {
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
                 <IconUserCircle />
-                <span>{user.name}</span>
+                <span>{currentUser.name}</span>
                 <span className="text-xs px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
-                  {RoleEnum[user.role]}
+                  {RoleEnum[currentUser.role]}
                 </span>
               </div>
 
+              {/* Role switcher removed per requirements */}
               <Button variant="secondary" onClick={onSignOut}>
                 Sign Out
               </Button>
@@ -135,4 +138,3 @@ export default function App({ currentUser, onSignOut }: AppProps) {
     </div>
   );
 }
-
