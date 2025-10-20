@@ -1,5 +1,4 @@
-// bua/pages/ReportIssuePage.tsx
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import type { Case, User } from "../../types";
 import { CaseStatus as CaseStatusEnum } from "../../types";
 import { geminiService } from "../lib/gemini";
@@ -21,12 +20,45 @@ interface ReportIssuePageProps {
   addCase?: (c: Case) => Promise<void>;
 }
 
+type PrefillStructured = {
+  title: string;
+  category: "Academics" | "Bullying" | "Facilities" | "Policy" | "Other";
+  keyFacts: string[];
+  description: string;
+};
+
 const ReportIssuePage: React.FC<ReportIssuePageProps> = ({ onNavigate, context, currentUser, addCase }) => {
-  const [category, setCategory] = useState("Academics");
-  const [description, setDescription] = useState(context?.prefill || "");
+  // Prefer structured prefill from Advisor -> summarize route
+  const structured: PrefillStructured | undefined = context?.prefillStructured;
+
+  // Back-compat: if older context keys are present (categoryGuess, prefill, etc.), use them
+  const fallbackCategory = context?.categoryGuess || "Academics";
+  const fallbackDescription = context?.prefill || "";
+  const fallbackTitle = context?.titlePrefill as string | undefined;
+  const fallbackKeyFacts: string[] = Array.isArray(context?.keyFacts) ? context.keyFacts : [];
+
+  const initialCategory = structured?.category || fallbackCategory;
+  const initialDescription = useMemo(() => {
+    if (structured) {
+      const lines = [
+        structured.title ? `Title: ${structured.title}` : "",
+        structured.keyFacts?.length ? `Key facts:\n${structured.keyFacts.map((k) => `- ${k}`).join("\n")}` : "",
+        structured.description ? `\nDetails:\n${structured.description}` : "",
+      ].filter(Boolean);
+      return lines.join("\n\n");
+    }
+    return fallbackDescription;
+  }, [structured, fallbackDescription]);
+
+  const [category, setCategory] = useState<string>(initialCategory);
+  const [description, setDescription] = useState<string>(initialDescription);
   const [evidence, setEvidence] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // for the little “AI Suggested” card
+  const titlePrefill: string | undefined = structured?.title || fallbackTitle;
+  const keyFacts: string[] = structured?.keyFacts || fallbackKeyFacts;
 
   const guessEvidenceType = (file: File | null) => {
     if (!file) return "unknown";
@@ -49,10 +81,10 @@ const ReportIssuePage: React.FC<ReportIssuePageProps> = ({ onNavigate, context, 
     setIsSubmitting(true);
 
     try {
-      // redact PII
+      // Redact PII
       const redactedDescription = await geminiService.redactPII(description);
 
-      // upload evidence (if any)
+      // Upload evidence (if any)
       let evidenceUrl: string | null = null;
       let evidenceType: string | null = null;
       if (evidence) {
@@ -63,11 +95,16 @@ const ReportIssuePage: React.FC<ReportIssuePageProps> = ({ onNavigate, context, 
         evidenceType = guessEvidenceType(evidence);
       }
 
-      // prepare payload: use client-side Date() for history timestamps (serverTimestamp() can't go inside arrays)
+      // Title fallback logic — prefer the AI/structured title if present
       const now = new Date();
+      const title =
+        (titlePrefill && titlePrefill.trim()) ||
+        (structured?.title && structured.title.trim()) ||
+        (description.length > 60 ? description.slice(0, 60) + "..." : description);
+
       const casePayload: any = {
         studentId: currentUser.id,
-        title: description.length > 60 ? description.slice(0, 60) + "..." : description,
+        title,
         category,
         description,
         redactedDescription,
@@ -77,10 +114,10 @@ const ReportIssuePage: React.FC<ReportIssuePageProps> = ({ onNavigate, context, 
             id: `msg${Date.now()}`,
             sender: "Student",
             text: "Case submitted.",
-            timestamp: now, // <-- client Date()
+            timestamp: now, // client Date() for array items (serverTimestamp is not allowed in arrays)
           },
         ],
-        createdAt: serverTimestamp(), // top-level server timestamp is OK
+        createdAt: serverTimestamp(), // server timestamp OK at top level
         resolutionNote: "",
       };
 
@@ -92,12 +129,11 @@ const ReportIssuePage: React.FC<ReportIssuePageProps> = ({ onNavigate, context, 
 
       const docRef = await addDoc(collection(db, "cases"), casePayload);
 
-      // optionally inform parent local state
       if (addCase) {
         const createdCase: Case = {
           id: docRef.id,
           studentId: currentUser.id,
-          title: casePayload.title,
+          title,
           category,
           description,
           redactedDescription,
@@ -116,9 +152,7 @@ const ReportIssuePage: React.FC<ReportIssuePageProps> = ({ onNavigate, context, 
         };
         try {
           await addCase(createdCase);
-        } catch (_) {
-          // ignore if parent can't handle it
-        }
+        } catch {}
       }
 
       onNavigate("tracker");
@@ -132,11 +166,36 @@ const ReportIssuePage: React.FC<ReportIssuePageProps> = ({ onNavigate, context, 
 
   return (
     <div className="max-w-2xl mx-auto">
-      <h1 className="text-3xl font-bold text-slate-800 dark:text-white text-center mb-6">Report an Issue</h1>
+      <h1 className="text-3xl font-bold text-slate-800 dark:text-white text-center mb-2">Report an Issue</h1>
+
+      {(structured || fallbackTitle || (fallbackKeyFacts && fallbackKeyFacts.length) || context?.prefill) && (
+        <Card className="mb-4">
+          <div className="text-sm text-slate-700 dark:text-slate-300 space-y-2">
+            {titlePrefill && (
+              <p>
+                <span className="font-semibold">Suggested title:</span> {titlePrefill}
+              </p>
+            )}
+            {keyFacts?.length > 0 && (
+              <div>
+                <p className="font-semibold">Key facts (AI-extracted):</p>
+                <ul className="list-disc ml-5">
+                  {keyFacts.map((k, i) => (
+                    <li key={i}>{k}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <p className="italic text-slate-500">Review and edit anything below before submitting.</p>
+          </div>
+        </Card>
+      )}
+
       <Card>
         <form onSubmit={handleSubmit} className="space-y-6">
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            Your report will be reviewed by an administrator. Personal information will be redacted by our AI assistant to protect your privacy before an admin sees it.
+            Your report will be reviewed by an administrator. Personal information will be redacted by our AI assistant
+            before an admin sees it.
           </p>
 
           {error && <p className="text-red-500 text-sm">{error}</p>}
@@ -166,9 +225,17 @@ const ReportIssuePage: React.FC<ReportIssuePageProps> = ({ onNavigate, context, 
           />
 
           <div className="flex justify-end gap-4">
-            <Button type="button" variant="secondary" onClick={() => onNavigate("advisor")}>Cancel</Button>
+            <Button type="button" variant="secondary" onClick={() => onNavigate("advisor")}>
+              Cancel
+            </Button>
             <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? <><Spinner className="mr-2" /> Submitting...</> : "Submit Report"}
+              {isSubmitting ? (
+                <>
+                  <Spinner className="mr-2" /> Submitting...
+                </>
+              ) : (
+                "Submit Report"
+              )}
             </Button>
           </div>
         </form>
@@ -178,3 +245,5 @@ const ReportIssuePage: React.FC<ReportIssuePageProps> = ({ onNavigate, context, 
 };
 
 export default ReportIssuePage;
+
+
