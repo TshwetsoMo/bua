@@ -1,4 +1,3 @@
-// bua/src/app/(auth)/signup/page.tsx
 "use client";
 
 import React, { useState } from "react";
@@ -14,11 +13,7 @@ import {
   updateProfile,
   User as FirebaseUser,
 } from "firebase/auth";
-import {
-  doc,
-  setDoc,
-  serverTimestamp,
-} from "firebase/firestore";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 
 import { User as DomainUser, Role } from "../../../../types";
 
@@ -28,11 +23,7 @@ interface SignUpPageProps {
 }
 
 function toDomainUser(u: FirebaseUser, role: Role, nameFallback: string): DomainUser {
-  return {
-    id: u.uid,
-    name: u.displayName ?? nameFallback,
-    role,
-  };
+  return { id: u.uid, name: u.displayName ?? nameFallback, role };
 }
 
 const SignUpPage: React.FC<SignUpPageProps> = ({ onSignIn, onSignUpSuccess }) => {
@@ -43,16 +34,31 @@ const SignUpPage: React.FC<SignUpPageProps> = ({ onSignIn, onSignUpSuccess }) =>
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
 
+  const upsertProfileViaServer = async (uid: string, nameVal: string, emailVal: string, roleVal: Role) => {
+    const res = await fetch("/api/users/upsert", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        uid,
+        name: nameVal,
+        email: emailVal,
+        role: Number(roleVal), // send numeric
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok || data?.error) {
+      throw new Error(data?.error || "Server upsert failed");
+    }
+  };
+
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setIsLoading(true);
 
     try {
-      // 1) create auth user
       const cred = await createUserWithEmailAndPassword(auth, email, password);
 
-      // 2) set displayName for convenience in client
       if (name && name.trim()) {
         try {
           await updateProfile(cred.user, { displayName: name.trim() });
@@ -61,18 +67,26 @@ const SignUpPage: React.FC<SignUpPageProps> = ({ onSignIn, onSignUpSuccess }) =>
         }
       }
 
-      // 3) create users/{uid} profile doc (stores role, name, metadata)
-      // IMPORTANT: ensure role is stored as a NUMBER so reads produce the right enum
-      await setDoc(doc(db, "users", cred.user.uid), {
+      const profile = {
         name: name || cred.user.displayName || email.split("@")[0],
-        role: Number(role),
+        role: Number(role), // store numeric
         email,
         createdAt: serverTimestamp(),
-      });
+        updatedAt: serverTimestamp(),
+      };
 
-      // 4) return your domain user
-      onSignUpSuccess(toDomainUser(cred.user, role, name || email.split("@")[0]));
+      try {
+        // Try client write first (fast path)
+        await setDoc(doc(db, "users", cred.user.uid), profile, { merge: true });
+      } catch (firestoreErr: any) {
+        console.warn("Client Firestore setDoc failed, falling back to server:", firestoreErr);
+        // Fallback: server writes using Admin SDK so we don’t depend on client rules
+        await upsertProfileViaServer(cred.user.uid, profile.name, email, role);
+      }
+
+      onSignUpSuccess(toDomainUser(cred.user, role, profile.name));
     } catch (err: any) {
+      console.error("Sign up failed:", err);
       const msg =
         err?.code === "auth/email-already-in-use"
           ? "That email is already in use."
@@ -166,3 +180,4 @@ const SignUpPage: React.FC<SignUpPageProps> = ({ onSignIn, onSignUpSuccess }) =>
 };
 
 export default SignUpPage;
+
