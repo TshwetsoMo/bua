@@ -21,6 +21,7 @@ interface SignInPageProps {
 function buildDomainUserFromFirebase(u: FirebaseUser, profileData?: any): DomainUser {
   const fallbackName = u.displayName ?? u.email?.split("@")[0] ?? "Student";
 
+  // coerce role into a number safely
   const roleFromProfile =
     profileData && typeof profileData.role !== "undefined"
       ? Number(profileData.role)

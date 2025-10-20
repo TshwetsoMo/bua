@@ -5,7 +5,6 @@ import React, { useState } from "react";
 import type { Role, User } from "../../types";
 import { Role as RoleEnum } from "../../types";
 import { IconUserCircle } from "./Icons";
-import { Select } from "./Select";
 import { Button } from "./Button";
 
 import { useCases } from "../hooks/useCase";
@@ -23,13 +22,13 @@ interface AppProps {
 }
 
 export default function App({ currentUser, onSignOut }: AppProps) {
+  // keep an internal user state so UI can update independently
   const [user, setUser] = useState(currentUser);
   const { cases, addCase, updateCase } = useCases(user);
   const { journalEntries, addJournalEntry } = useJournal();
 
-  const [activePage, setActivePage] = useState(
-    user.role === RoleEnum.Admin ? "admin" : "advisor"
-  );
+  // Default landing page depends on role
+  const [activePage, setActivePage] = useState<string>(user.role === RoleEnum.Admin ? "admin" : "advisor");
   const [pageContext, setPageContext] = useState<any>(null);
 
   const handleNavigate = (page: string, context: any = null) => {
@@ -38,11 +37,11 @@ export default function App({ currentUser, onSignOut }: AppProps) {
     setPageContext(context);
   };
 
-  
-  const handleRoleChange = async (newRole: Role) => {
-    const switchedUser = { ...user, role: newRole };
-    setUser(switchedUser);
-    handleNavigate(newRole === RoleEnum.Admin ? "admin" : "advisor");
+  // When the app receives an updated user object (e.g. after sign-in), call this
+  const handleSetUser = (u: User) => {
+    setUser(u);
+    // honor role landing when user object changes
+    setActivePage(u.role === RoleEnum.Admin ? "admin" : "advisor");
   };
 
   const navLinks = {
@@ -114,6 +113,7 @@ export default function App({ currentUser, onSignOut }: AppProps) {
                 </div>
               </div>
             </div>
+
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
                 <IconUserCircle />
@@ -122,15 +122,7 @@ export default function App({ currentUser, onSignOut }: AppProps) {
                   {RoleEnum[user.role]}
                 </span>
               </div>
-              <Select
-                value={user.role}
-                onChange={(e) => handleRoleChange(parseInt(e.target.value) as Role)}
-                className="w-auto !py-1"
-                aria-label="Switch user role"
-              >
-                <option value={RoleEnum.Student}>View as Student</option>
-                <option value={RoleEnum.Admin}>View as Admin</option>
-              </Select>
+
               <Button variant="secondary" onClick={onSignOut}>
                 Sign Out
               </Button>
@@ -138,7 +130,9 @@ export default function App({ currentUser, onSignOut }: AppProps) {
           </div>
         </nav>
       </header>
+
       <main className="py-10 container mx-auto px-4 sm:px-6 lg:px-8">{renderPage()}</main>
     </div>
   );
 }
+

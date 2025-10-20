@@ -8,7 +8,6 @@ import { Spinner } from "@/components/Spinner";
 import { IconPaperAirplane, IconSparkles } from "@/components/Icons";
 import { getAuth, onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 
-// constants
 const LOCAL_CHAT_KEY = "bua_chatId";
 const INIT_TEXT =
   "Hi! I'm Bua, your AI advisor. You can ask me anything about school life, from policies to clubs. How can I help you today?";
@@ -26,12 +25,11 @@ const AIAdvisorPage: React.FC<Props> = ({ onNavigate }) => {
   const lastUserTextRef = useRef<string>("");
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
-  // scroll-to-bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isLoading]);
 
-  // watch auth state (this ensures we know when firebaseUser becomes available)
+  // Keep firebase auth state
   useEffect(() => {
     const auth = getAuth();
     const unsub = onAuthStateChanged(auth, (u) => {
@@ -40,45 +38,55 @@ const AIAdvisorPage: React.FC<Props> = ({ onNavigate }) => {
     return () => unsub();
   }, []);
 
-  // helper: wait for a real firebase user (with a timeout)
-  const getIdToken = async (timeoutMs = 5000): Promise<string> => {
-    // fast path
-    if (firebaseUser) {
+  // Get a fresh ID token (force refresh) with optional timeout
+  const getIdToken = async (forceRefresh = true, timeoutMs = 7000): Promise<string> => {
+    const auth = getAuth();
+    const user = auth.currentUser;
+    if (user) {
       try {
-        return await firebaseUser.getIdToken();
-      } catch (e) {
-        console.error("getIdToken() failed for existing firebaseUser:", e);
-        return "";
+        // Force-refresh to avoid expired-token issues
+        return await user.getIdToken(forceRefresh);
+      } catch (err) {
+        console.warn("getIdToken(force) failed:", err);
+        // fallback to non-forced token
+        try {
+          return await user.getIdToken(false);
+        } catch (err2) {
+          console.error("getIdToken fallback failed:", err2);
+          return "";
+        }
       }
     }
 
-    // otherwise wait for auth state (onAuthStateChanged) until timeout
-    return await new Promise<string>((resolve) => {
-      const auth = getAuth();
+    // If user not present yet, wait for onAuthStateChanged up to timeoutMs
+    return new Promise<string>((resolve) => {
       let settled = false;
       const timer = setTimeout(() => {
         if (!settled) {
           settled = true;
-          console.warn("getIdToken: timeout waiting for firebaseUser");
+          console.warn("getIdToken: timeout waiting for firebase user");
           resolve("");
         }
       }, timeoutMs);
 
-      const unsub = onAuthStateChanged(auth, async (u) => {
-        if (settled) return;
-        if (!u) return; // user still not signed in
+      const unsub = onAuthStateChanged(getAuth(), async (u) => {
+        if (!u) return;
         try {
-          const token = await u.getIdToken();
-          settled = true;
-          clearTimeout(timer);
-          unsub();
-          resolve(token);
+          const token = await u.getIdToken(forceRefresh);
+          if (!settled) {
+            settled = true;
+            clearTimeout(timer);
+            unsub();
+            resolve(token);
+          }
         } catch (err) {
-          settled = true;
-          clearTimeout(timer);
-          unsub();
-          console.error("getIdToken error after onAuthStateChanged:", err);
-          resolve("");
+          if (!settled) {
+            settled = true;
+            clearTimeout(timer);
+            unsub();
+            console.error("getIdToken after state change failed:", err);
+            resolve("");
+          }
         }
       });
     });
@@ -86,47 +94,52 @@ const AIAdvisorPage: React.FC<Props> = ({ onNavigate }) => {
 
   const pushMessage = (m: ChatMessage) => setMessages((prev) => [...prev, m]);
 
-  // Resume chat history if we have a saved chatId — only after firebaseUser available
+  // Try to resume chat: server route currently doesn't persist chat docs by id — this will attempt server history fetch if implemented.
   useEffect(() => {
-    if (!firebaseUser) return;
     const resume = async () => {
       const chatId = localStorage.getItem(LOCAL_CHAT_KEY);
       if (!chatId) return;
+      if (!firebaseUser) return;
 
       setIsLoading(true);
       setError(null);
       try {
-        const token = await getIdToken();
+        const token = await getIdToken(true);
         if (!token) {
-          setError("Log in required to resume conversation.");
+          setError("You must be logged in to resume chat.");
           return;
         }
 
+        // Note: Our server route expects either a 'history' param or a 'message'.
+        // To support true server-side resume you must implement storing aiChats server-side.
+        // Here we call server with a dummy message = '' and expect server to return history (your server must implement that).
         const res = await fetch("/api/ai/gemini/chat", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ chatId, message: "" }), // empty message -> server returns history
+          body: JSON.stringify({ chatId, message: "" }),
         });
 
-        const data = await res.json().catch(() => ({ error: "Invalid JSON from server" }));
+        const data = await res.json().catch(() => ({ error: "Invalid JSON" }));
         if (!res.ok || data?.error) {
-          console.warn("resume chat failed", data);
+          console.warn("resume failed", data);
           setError(data?.error ?? "Failed to resume chat.");
-          pushMessage({ id: crypto.randomUUID(), sender: "ai", text: `Error: ${data?.error ?? "Resume failed"}` });
         } else if (Array.isArray(data.history)) {
-          // convert server history to UI messages
+          // convert to UI messages
           const ui = data.history.map((h: any) => ({
             id: crypto.randomUUID(),
             sender: h.role === "user" ? "user" : "ai",
             text: h.text,
-          })) as ChatMessage[];
+          }));
           setMessages(ui.length ? ui : [{ id: "init", sender: "ai", text: INIT_TEXT }]);
+        } else if (typeof data.text === "string") {
+          // server returned text as last reply
+          setMessages([{ id: crypto.randomUUID(), sender: "ai", text: data.text }]);
         }
       } catch (err) {
-        console.error("Failed to resume chat:", err);
+        console.error("resume chat exception:", err);
         setError("Failed to resume chat.");
       } finally {
         setIsLoading(false);
@@ -137,7 +150,6 @@ const AIAdvisorPage: React.FC<Props> = ({ onNavigate }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firebaseUser]);
 
-  // send message
   const handleSend = async () => {
     if (isLoading) return;
     if (!firebaseUser) {
@@ -155,38 +167,53 @@ const AIAdvisorPage: React.FC<Props> = ({ onNavigate }) => {
     setIsLoading(true);
     setError(null);
 
-    try {
-      const token = await getIdToken();
-      if (!token) {
-        setError("Could not get ID token. Please sign in again.");
-        setIsLoading(false);
-        return;
-      }
-
+    // helper to perform the call with a token
+    const doCall = async (idToken: string) => {
       const chatId = localStorage.getItem(LOCAL_CHAT_KEY) || null;
-      // debug log - remove in prod
-      console.debug("Sending chat message, chatId:", chatId);
-
       const res = await fetch("/api/ai/gemini/chat", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${idToken}`,
         },
         body: JSON.stringify({ chatId, message: trimmed }),
       });
+      return res;
+    };
 
-      const data = await res.json().catch(() => ({ error: "Invalid JSON from server" }));
+    try {
+      let token = await getIdToken(true);
+      if (!token) {
+        setError("Could not obtain ID token. Please sign in again.");
+        setIsLoading(false);
+        return;
+      }
+
+      // Try request once
+      let res = await doCall(token);
+      let data = await res.json().catch(() => ({ error: "Invalid JSON from server" }));
+
+      // If server says token invalid/expired (401), try refreshing token once then retry
+      if (res.status === 401 || data?.error === "Invalid or expired ID token") {
+        console.warn("Server rejected token, forcing refresh and retrying once...");
+        token = await getIdToken(true); // force refresh true
+        if (!token) {
+          setError("Unable to refresh ID token. Please sign in again.");
+          pushMessage({ id: crypto.randomUUID(), sender: "ai", text: "Please sign in again to continue." });
+          setIsLoading(false);
+          return;
+        }
+        res = await doCall(token);
+        data = await res.json().catch(() => ({ error: "Invalid JSON from server (retry)" }));
+      }
 
       if (!res.ok || data?.error) {
-        console.warn("AI request failed:", data);
         const msg = data?.error ?? "AI service error";
         setError(msg);
         pushMessage({ id: crypto.randomUUID(), sender: "ai", text: `Error: ${msg}` });
       } else {
-        // store chatId returned by server
         if (data.chatId) localStorage.setItem(LOCAL_CHAT_KEY, data.chatId);
-        const aiText = typeof data.text === "string" ? data.text : (Array.isArray(data.history) ? "" : "No reply.");
+        const aiText: string = typeof data.text === "string" ? data.text : (Array.isArray(data.history) ? "" : "No reply.");
         pushMessage({ id: crypto.randomUUID(), sender: "ai", text: aiText || "No reply from advisor." });
       }
     } catch (err) {
@@ -209,7 +236,16 @@ const AIAdvisorPage: React.FC<Props> = ({ onNavigate }) => {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-3xl font-bold text-slate-800 dark:text-white">AI Advisor</h1>
         <div className="flex items-center gap-3">
-          <Button variant="secondary" onClick={() => { localStorage.removeItem(LOCAL_CHAT_KEY); setMessages([{ id: "init", sender: "ai", text: INIT_TEXT }]); setError(null); }}>New conversation</Button>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              localStorage.removeItem(LOCAL_CHAT_KEY);
+              setMessages([{ id: "init", sender: "ai", text: INIT_TEXT }]);
+              setError(null);
+            }}
+          >
+            New conversation
+          </Button>
         </div>
       </div>
 
@@ -219,28 +255,48 @@ const AIAdvisorPage: React.FC<Props> = ({ onNavigate }) => {
             const isAI = m.sender === "ai";
             return (
               <div key={m.id} className={`flex items-end gap-2 ${!isAI ? "justify-end" : ""}`}>
-                {isAI && <div className="flex-shrink-0 w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white"><IconSparkles /></div>}
-                <div className={`max-w-md p-3 rounded-lg ${!isAI ? "bg-blue-600 text-white rounded-br-none" : "bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-bl-none"}`}>
+                {isAI && (
+                  <div className="flex-shrink-0 w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white">
+                    <IconSparkles />
+                  </div>
+                )}
+                <div
+                  className={`max-w-md p-3 rounded-lg ${
+                    !isAI ? "bg-blue-600 text-white rounded-br-none" : "bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-bl-none"
+                  }`}
+                >
                   <p className="whitespace-pre-wrap">{m.text}</p>
                   {isAI && m.text.toLowerCase().includes("start a report") && (
-                    <Button className="mt-3" variant="secondary" onClick={startReportFromLastUser}>Start a Report</Button>
+                    <Button className="mt-3" variant="secondary" onClick={startReportFromLastUser}>
+                      Start a Report
+                    </Button>
                   )}
                 </div>
               </div>
             );
           })}
+
           {isLoading && (
             <div className="flex items-end gap-2">
-              <div className="flex-shrink-0 w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white"><IconSparkles /></div>
-              <div className="max-w-md p-3 rounded-lg bg-slate-200 dark:bg-slate-700"><div className="flex items-center gap-2 text-slate-500"><Spinner /> Thinking...</div></div>
+              <div className="flex-shrink-0 w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white">
+                <IconSparkles />
+              </div>
+              <div className="max-w-md p-3 rounded-lg bg-slate-200 dark:bg-slate-700">
+                <div className="flex items-center gap-2 text-slate-500">
+                  <Spinner /> Thinking...
+                </div>
+              </div>
             </div>
           )}
+
           <div ref={messagesEndRef} />
         </div>
 
         <div className="mt-6 flex items-center gap-2 border-t border-slate-200 dark:border-slate-700 pt-4">
           <Input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown} placeholder="Ask about rules, clubs, wellbeing..." disabled={isLoading || !firebaseUser} aria-label="Chat input" />
-          <Button onClick={handleSend} disabled={isLoading || !input.trim() || !firebaseUser} aria-label="Send message">{isLoading ? <Spinner /> : <IconPaperAirplane />}</Button>
+          <Button onClick={handleSend} disabled={isLoading || !input.trim() || !firebaseUser} aria-label="Send message">
+            {isLoading ? <Spinner /> : <IconPaperAirplane />}
+          </Button>
         </div>
 
         {error && <p className="text-red-500 text-sm mt-3 text-center">{error}</p>}
@@ -250,4 +306,5 @@ const AIAdvisorPage: React.FC<Props> = ({ onNavigate }) => {
 };
 
 export default AIAdvisorPage;
+
 

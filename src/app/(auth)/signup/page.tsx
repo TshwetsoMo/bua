@@ -62,9 +62,10 @@ const SignUpPage: React.FC<SignUpPageProps> = ({ onSignIn, onSignUpSuccess }) =>
       }
 
       // 3) create users/{uid} profile doc (stores role, name, metadata)
+      // IMPORTANT: ensure role is stored as a NUMBER so reads produce the right enum
       await setDoc(doc(db, "users", cred.user.uid), {
         name: name || cred.user.displayName || email.split("@")[0],
-        role,
+        role: Number(role),
         email,
         createdAt: serverTimestamp(),
       });
@@ -165,4 +166,3 @@ const SignUpPage: React.FC<SignUpPageProps> = ({ onSignIn, onSignUpSuccess }) =>
 };
 
 export default SignUpPage;
-
