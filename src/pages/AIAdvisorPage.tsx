@@ -1,8 +1,8 @@
+// bua/pages/AIAdvisorPage.tsx
 import React, { useEffect, useRef, useState } from "react";
 import type { ChatMessage } from "../../types";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
-import { Input } from "@/components/Input";
 import { Spinner } from "@/components/Spinner";
 import { IconPaperAirplane, IconSparkles } from "@/components/Icons";
 import { getAuth, onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
@@ -15,6 +15,53 @@ interface Props {
   onNavigate: (page: string, context?: any) => void;
 }
 
+/** Polished chat bubble with subtle shadows and optional CTA */
+function ChatBubble({
+  isAI,
+  children,
+  timestamp,
+  onAction,
+}: {
+  isAI: boolean;
+  children: React.ReactNode;
+  timestamp?: string;
+  onAction?: () => void;
+}) {
+  return (
+    <div className={`flex items-end gap-2 ${isAI ? "" : "justify-end"}`}>
+      {isAI && (
+        <div className="flex-shrink-0 w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-indigo-500 text-white flex items-center justify-center shadow-sm">
+          <span className="text-sm">✨</span>
+        </div>
+      )}
+      <div
+        className={[
+          "max-w-[80%] rounded-2xl px-4 py-3 shadow-sm",
+          isAI
+            ? "bg-slate-100 dark:bg-slate-700/70 text-slate-800 dark:text-slate-100 rounded-bl-md"
+            : "bg-blue-600 text-white rounded-br-md",
+        ].join(" ")}
+      >
+        <div className="whitespace-pre-wrap leading-relaxed">{children}</div>
+
+        {onAction && (
+          <button
+            onClick={onAction}
+            className="inline-flex items-center gap-2 mt-3 text-xs font-medium px-3 py-1.5 rounded-full
+                     bg-white/70 text-blue-700 hover:bg-white shadow-sm
+                     dark:bg-slate-800/60 dark:text-blue-200 dark:hover:bg-slate-800/80
+                     transition-colors active:scale-[0.98]"
+          >
+            Start a report
+          </button>
+        )}
+
+        {timestamp && <div className="mt-1 text-[11px] opacity-60">{timestamp}</div>}
+      </div>
+    </div>
+  );
+}
+
 const AIAdvisorPage: React.FC<Props> = ({ onNavigate }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([{ id: "init", sender: "ai", text: INIT_TEXT }]);
   const [input, setInput] = useState("");
@@ -24,16 +71,19 @@ const AIAdvisorPage: React.FC<Props> = ({ onNavigate }) => {
   const lastUserTextRef = useRef<string>("");
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
+  // scroll-to-bottom on new messages or loading state changes
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isLoading]);
 
+  // watch auth state
   useEffect(() => {
     const auth = getAuth();
     const unsub = onAuthStateChanged(auth, (u) => setFirebaseUser(u));
     return () => unsub();
   }, []);
 
+  // Get a fresh ID token (with fallback & small timeout watcher)
   const getIdToken = async (forceRefresh = true, timeoutMs = 7000): Promise<string> => {
     const auth = getAuth();
     const user = auth.currentUser;
@@ -82,7 +132,7 @@ const AIAdvisorPage: React.FC<Props> = ({ onNavigate }) => {
 
   const pushMessage = (m: ChatMessage) => setMessages((prev) => [...prev, m]);
 
-  // Resume chat (optional — only works if your server returns history when message is "")
+  // Try to resume chat (if server supports returning history with empty message)
   useEffect(() => {
     const resume = async () => {
       const chatId = localStorage.getItem(LOCAL_CHAT_KEY);
@@ -162,6 +212,8 @@ const AIAdvisorPage: React.FC<Props> = ({ onNavigate }) => {
 
       let res = await doCall(token);
       let data = await res.json().catch(() => ({ error: "Invalid JSON from server" }));
+
+      // If server says token invalid/expired (401), try refreshing token once then retry
       if (res.status === 401 || data?.error === "Invalid or expired ID token") {
         token = await getIdToken(true);
         if (!token) {
@@ -193,6 +245,7 @@ const AIAdvisorPage: React.FC<Props> = ({ onNavigate }) => {
     }
   };
 
+  // Start report from the last user text by calling your summarise endpoint
   const startReportFromLastUser = async () => {
     const text = lastUserTextRef.current.trim();
     if (!text) {
@@ -214,6 +267,7 @@ const AIAdvisorPage: React.FC<Props> = ({ onNavigate }) => {
       const token = await auth.currentUser?.getIdToken(true);
       if (!token) throw new Error("Missing ID token");
 
+      // IMPORTANT: your endpoint uses British spelling "summarise"
       const res = await fetch("/api/ai/gemini/summarise", {
         method: "POST",
         headers: {
@@ -225,7 +279,7 @@ const AIAdvisorPage: React.FC<Props> = ({ onNavigate }) => {
       const data = await res.json();
 
       if (!res.ok || data?.error) {
-        throw new Error(data?.error || "Summarization failed");
+        throw new Error(data?.error || "Summarisation failed");
       }
 
       // navigate with structured prefill
@@ -238,14 +292,13 @@ const AIAdvisorPage: React.FC<Props> = ({ onNavigate }) => {
     }
   };
 
-  const handleKeyDown: React.KeyboardEventHandler<HTMLInputElement> = (e) => {
-    if (e.key === "Enter" && !isLoading) handleSend();
-  };
-
   return (
     <div className="flex flex-col h-[calc(100vh-200px)] max-w-3xl mx-auto">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold text-slate-800 dark:text-white">AI Advisor</h1>
+        <div>
+          <h1 className="text-3xl font-bold text-slate-800 dark:text-white">AI Advisor</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400">Ask about policies, clubs, wellbeing…</p>
+        </div>
         <div className="flex items-center gap-3">
           <Button
             variant="secondary"
@@ -254,51 +307,43 @@ const AIAdvisorPage: React.FC<Props> = ({ onNavigate }) => {
               setMessages([{ id: "init", sender: "ai", text: INIT_TEXT }]);
               setError(null);
             }}
+            className="rounded-xl"
           >
             New conversation
           </Button>
         </div>
       </div>
 
-      <Card className="flex-grow flex flex-col">
-        <div className="flex-grow overflow-y-auto pr-4 -mr-4 space-y-4">
+      <Card className="flex-grow flex flex-col rounded-2xl shadow-sm border border-slate-200/60 dark:border-slate-700/60">
+        {/* Messages */}
+        <div
+          className="flex-grow overflow-y-auto pr-2 -mr-2 space-y-4 p-4"
+          aria-live="polite"
+          aria-busy={isLoading ? "true" : "false"}
+        >
           {messages.map((m) => {
             const isAI = m.sender === "ai";
+            const wantsCTA = isAI && m.text.toLowerCase().includes("start a report");
             return (
-              <div key={m.id} className={`flex items-end gap-2 ${!isAI ? "justify-end" : ""}`}>
-                {isAI && (
-                  <div className="flex-shrink-0 w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white">
-                    <IconSparkles />
-                  </div>
-                )}
-                <div
-                  className={`max-w-md p-3 rounded-lg ${
-                    !isAI
-                      ? "bg-blue-600 text-white rounded-br-none"
-                      : "bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-bl-none"
-                  }`}
-                >
-                  <p className="whitespace-pre-wrap">{m.text}</p>
-
-                  {/* If your AI message suggests it, show this CTA inline */}
-                  {isAI && m.text.toLowerCase().includes("start a report") && (
-                    <Button className="mt-3" variant="secondary" onClick={startReportFromLastUser}>
-                      Start a Report
-                    </Button>
-                  )}
-                </div>
-              </div>
+              <ChatBubble
+                key={m.id}
+                isAI={isAI}
+                onAction={wantsCTA ? startReportFromLastUser : undefined}
+                timestamp={undefined}
+              >
+                {m.text}
+              </ChatBubble>
             );
           })}
 
           {isLoading && (
             <div className="flex items-end gap-2">
-              <div className="flex-shrink-0 w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white">
-                <IconSparkles />
+              <div className="flex-shrink-0 w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-indigo-500 text-white flex items-center justify-center shadow-sm">
+                <span className="text-sm">✨</span>
               </div>
-              <div className="max-w-md p-3 rounded-lg bg-slate-200 dark:bg-slate-700">
-                <div className="flex items-center gap-2 text-slate-500">
-                  <Spinner /> Thinking...
+              <div className="max-w-[80%] rounded-2xl px-4 py-3 shadow-sm bg-slate-100 dark:bg-slate-700/70">
+                <div className="flex items-center gap-2 text-slate-500 dark:text-slate-300">
+                  <Spinner /> Thinking…
                 </div>
               </div>
             </div>
@@ -307,33 +352,52 @@ const AIAdvisorPage: React.FC<Props> = ({ onNavigate }) => {
           <div ref={messagesEndRef} />
         </div>
 
-        <div className="mt-6 flex items-center gap-2 border-t border-slate-200 dark:border-slate-700 pt-4">
-          <Input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Ask about rules, clubs, wellbeing..."
-            disabled={isLoading || !firebaseUser}
-            aria-label="Chat input"
-          />
-          <Button onClick={handleSend} disabled={isLoading || !input.trim() || !firebaseUser} aria-label="Send message">
-            {isLoading ? <Spinner /> : <IconPaperAirplane />}
-          </Button>
-
-          {/* Optional always-visible CTA: keep it if you want users to start a report any time */}
-          <Button variant="secondary" onClick={startReportFromLastUser} disabled={!lastUserTextRef.current || isLoading}>
-            Start a Report
-          </Button>
+        {/* Sticky composer */}
+        <div className="sticky bottom-0 left-0 bg-white/70 dark:bg-slate-900/60 backdrop-blur supports-[backdrop-filter]:bg-white/50 dark:supports-[backdrop-filter]:bg-slate-900/40">
+          <div className="border-t border-slate-200 dark:border-slate-700 p-3">
+            <div className="flex items-end gap-3">
+              <textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    if (!isLoading) handleSend();
+                  }
+                }}
+                rows={1}
+                placeholder="Type your message… (Shift+Enter for newline)"
+                disabled={isLoading || !firebaseUser}
+                className="flex-1 max-h-40 min-h-[44px] resize-none rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2
+                           focus:outline-none focus:ring-2 focus:ring-blue-500"
+                aria-label="Chat input"
+              />
+              <Button
+                onClick={handleSend}
+                disabled={isLoading || !input.trim() || !firebaseUser}
+                aria-label="Send message"
+                className="rounded-xl active:scale-[0.98]"
+              >
+                {isLoading ? <Spinner /> : <IconPaperAirplane />}
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={startReportFromLastUser}
+                disabled={!lastUserTextRef.current || isLoading}
+                className="rounded-xl active:scale-[0.98]"
+              >
+                Start a Report
+              </Button>
+            </div>
+            <div className="flex justify-between mt-2 text-xs text-slate-500 dark:text-slate-400">
+              <span>Press Enter to send</span>
+              {error && <span className="text-red-500">{error}</span>}
+            </div>
+          </div>
         </div>
-
-        {error && <p className="text-red-500 text-sm mt-3 text-center">{error}</p>}
       </Card>
     </div>
   );
 };
 
 export default AIAdvisorPage;
-
-
-
-
