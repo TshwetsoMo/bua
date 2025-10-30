@@ -58,6 +58,7 @@ Reports are automatically **summarised**, **redacted for PII**, and **categorise
 
 ## 📁 Project Structure
 
+```
 bua/
 ├── app/
 │ └── api/
@@ -97,6 +98,7 @@ bua/
 
 yaml
 Copy code
+```
 
 ## ⚙️ Installation & Setup
 
