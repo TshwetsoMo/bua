@@ -133,8 +133,6 @@ GEMINI_MODEL=gemini-2.5-flash
 
 ### 4️⃣ Run Development Server
 
-bash
-Copy code
 npm run dev
 Visit: http://localhost:3000
 
@@ -142,8 +140,6 @@ Visit: http://localhost:3000
 
 For production:
 
-bash
-Copy code
 npm run build
 npm run start
 Deploy via:
