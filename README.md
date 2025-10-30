@@ -159,7 +159,8 @@ redactPII() Detects and replaces personally identifiable information
 summariseForReport() Converts free-form text into a structured incident report
 summariseCasesForJournal() Analyses multiple anonymised cases into trend summaries for the News Feed
 
-Key Documentation References
+## Key Documentation References
+
 Google Gemini API (Generative Language Model)
 https://ai.google.dev/gemini-api/docs
 
@@ -208,19 +209,19 @@ The app’s color palette is accessible and WCAG AA compliant.
 
 📊 Introduce visual data analytics for authorities.
 
-👨🏽‍💻 Author & Maintainer
+### 👨🏽‍💻 Author & Maintainer
+
 Tshwetso K. Mokgatlhe
 Interaction Development & UX Design Student
 🎓 The Open Window Institute — Faculty of Creative Technologies
 📍 South Africa
 
-💼 Portfolio: https://tshwetsomokgatlhe.com
+🐙 GitHub: https://github.com/tshwetsomo/bua
 
-🐙 GitHub: https://github.com/tshwetso-mokgatlhe
+📧 Email: [221411@virtualwindow.co.za]
 
-📧 Email: [your.email@example.com]
+## 📚 References & Acknowledgements
 
-📚 References & Acknowledgements
 Google AI. (2024). Gemini 2.5 API Documentation.
 Retrieved from https://ai.google.dev/gemini-api
 
