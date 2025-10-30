@@ -108,11 +108,12 @@ Copy code
 
 ### 2️⃣ Clone Repository
 
-```bash
 git clone https://github.com/<your-username>/bua.git
 cd bua
 npm install
-3️⃣ Configure Environment Variables
+
+### 3️⃣ Configure Environment Variables
+
 Create .env.local at the root:
 
 bash
@@ -127,13 +128,16 @@ NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
 FIREBASE_SERVICE_ACCOUNT_JSON={"type":"service_account", ...}
 GEMINI_API_KEY=your_gemini_api_key
 GEMINI_MODEL=gemini-2.5-flash
-4️⃣ Run Development Server
+
+### 4️⃣ Run Development Server
+
 bash
 Copy code
 npm run dev
 Visit: http://localhost:3000
 
-5️⃣ Build & Deploy
+### 5️⃣ Build & Deploy
+
 For production:
 
 bash
@@ -146,13 +150,14 @@ Vercel: vercel --prod
 
 Firebase Hosting: firebase deploy
 
-🧠 AI Integration
+## 🧠 AI Integration
+
 Bua’s AI layer uses Google’s Gemini API to perform three main tasks:
 
-Function	Purpose
-redactPII()	Detects and replaces personally identifiable information
-summariseForReport()	Converts free-form text into a structured incident report
-summariseCasesForJournal()	Analyses multiple anonymised cases into trend summaries for the News Feed
+Function Purpose
+redactPII() Detects and replaces personally identifiable information
+summariseForReport() Converts free-form text into a structured incident report
+summariseCasesForJournal() Analyses multiple anonymised cases into trend summaries for the News Feed
 
 Key Documentation References
 Google Gemini API (Generative Language Model)
@@ -171,7 +176,8 @@ TypeScript + React Docs
 https://react.dev/learn
 https://www.typescriptlang.org/docs
 
-🔒 Security & Data Handling
+## 🔒 Security & Data Handling
+
 All reports are stored without identifiable data.
 
 Anonymisation runs client-side before data submission.
@@ -180,7 +186,8 @@ Firestore security rules restrict write/read access based on Firebase Auth.
 
 Admin-only operations (like generating the News Feed) require verified credentials.
 
-🧭 Development Notes
+## 🧭 Development Notes
+
 Mock AI responses (MockGoogleGenAI) ensure local development works without live API calls.
 
 The NewsFeedPage replaces the old “Journal” system with the same data model for backward compatibility.
@@ -189,7 +196,8 @@ Chat history and News updates are fully scrollable and mobile-optimised.
 
 The app’s color palette is accessible and WCAG AA compliant.
 
-🪄 Future Improvements
+## 🪄 Future Improvements
+
 🌐 Add multilingual AI support (English, Setswana, isiZulu, Afrikaans).
 
 🧩 Role-specific dashboards for SGB, SACE, and SAHRC users.
@@ -227,9 +235,11 @@ Retrieved from https://tailwindcss.com/docs
 
 OpenAI ChatGPT & Google Gemini (2025). Collaborative assistance for conceptualisation, architecture, and code generation.
 
-🪪 License
+## 🪪 License
+
 This project is licensed under the MIT License.
 You are free to use, modify, and distribute this software with proper attribution.
 
-“Bua” means “Speak” in Setswana — because every learner deserves a voice.
+```bash
+
 ```
