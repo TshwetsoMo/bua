@@ -1,11 +1,24 @@
 // bua/pages/AIAdvisorPage.tsx
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { ChatMessage } from "../../types";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
+import { Input } from "@/components/Input";
 import { Spinner } from "@/components/Spinner";
 import { IconPaperAirplane, IconSparkles } from "@/components/Icons";
 import { getAuth, onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
+
+// Firestore list + delete
+import { db } from "../lib/firebase/client";
+import {
+  collection,
+  deleteDoc,
+  doc,
+  onSnapshot,
+  orderBy,
+  query,
+  where,
+} from "firebase/firestore";
 
 const LOCAL_CHAT_KEY = "bua_chatId";
 const INIT_TEXT =
@@ -15,75 +28,64 @@ interface Props {
   onNavigate: (page: string, context?: any) => void;
 }
 
-/** Polished chat bubble with subtle shadows and optional CTA */
-function ChatBubble({
-  isAI,
-  children,
-  timestamp,
-  onAction,
-}: {
-  isAI: boolean;
-  children: React.ReactNode;
-  timestamp?: string;
-  onAction?: () => void;
-}) {
-  return (
-    <div className={`flex items-end gap-2 ${isAI ? "" : "justify-end"}`}>
-      {isAI && (
-        <div className="flex-shrink-0 w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-indigo-500 text-white flex items-center justify-center shadow-sm">
-          <span className="text-sm">✨</span>
-        </div>
-      )}
-      <div
-        className={[
-          "max-w-[80%] rounded-2xl px-4 py-3 shadow-sm",
-          isAI
-            ? "bg-slate-100 dark:bg-slate-700/70 text-slate-800 dark:text-slate-100 rounded-bl-md"
-            : "bg-blue-600 text-white rounded-br-md",
-        ].join(" ")}
-      >
-        <div className="whitespace-pre-wrap leading-relaxed">{children}</div>
-
-        {onAction && (
-          <button
-            onClick={onAction}
-            className="inline-flex items-center gap-2 mt-3 text-xs font-medium px-3 py-1.5 rounded-full
-                     bg-white/70 text-blue-700 hover:bg-white shadow-sm
-                     dark:bg-slate-800/60 dark:text-blue-200 dark:hover:bg-slate-800/80
-                     transition-colors active:scale-[0.98]"
-          >
-            Start a report
-          </button>
-        )}
-
-        {timestamp && <div className="mt-1 text-[11px] opacity-60">{timestamp}</div>}
-      </div>
-    </div>
-  );
-}
+type ChatListItem = {
+  id: string;
+  title?: string;
+  updatedAt?: { toDate?: () => Date } | string | null;
+  lastUser?: string;
+};
 
 const AIAdvisorPage: React.FC<Props> = ({ onNavigate }) => {
-  const [messages, setMessages] = useState<ChatMessage[]>([{ id: "init", sender: "ai", text: INIT_TEXT }]);
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    { id: "init", sender: "ai", text: INIT_TEXT },
+  ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [chats, setChats] = useState<ChatListItem[]>([]);
+  const [activeChatId, setActiveChatId] = useState<string | null>(
+    () => localStorage.getItem(LOCAL_CHAT_KEY) || null
+  );
+
   const lastUserTextRef = useRef<string>("");
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
-  // scroll-to-bottom on new messages or loading state changes
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isLoading]);
 
-  // watch auth state
+  // Keep firebase auth state
   useEffect(() => {
     const auth = getAuth();
     const unsub = onAuthStateChanged(auth, (u) => setFirebaseUser(u));
     return () => unsub();
   }, []);
 
-  // Get a fresh ID token (with fallback & small timeout watcher)
+  // Subscribe to user's chat list
+  useEffect(() => {
+    if (!firebaseUser) return;
+    const q = query(
+      collection(db, "aiChats"),
+      where("ownerUid", "==", firebaseUser.uid),
+      orderBy("updatedAt", "desc")
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      const items: ChatListItem[] = snap.docs.map((d) => {
+        const data = d.data() as any;
+        return {
+          id: d.id,
+          title: data.title || data.history?.find((h: any) => h.role === "user")?.text?.slice(0, 40),
+          updatedAt: data.updatedAt ?? null,
+          lastUser: data.history?.slice().reverse().find((h: any) => h.role === "user")?.text,
+        };
+      });
+      setChats(items);
+    });
+    return () => unsub();
+  }, [firebaseUser]);
+
+  // Get a fresh ID token (force refresh) with optional timeout
   const getIdToken = async (forceRefresh = true, timeoutMs = 7000): Promise<string> => {
     const auth = getAuth();
     const user = auth.currentUser;
@@ -98,7 +100,6 @@ const AIAdvisorPage: React.FC<Props> = ({ onNavigate }) => {
         }
       }
     }
-
     return new Promise<string>((resolve) => {
       let settled = false;
       const timer = setTimeout(() => {
@@ -107,7 +108,6 @@ const AIAdvisorPage: React.FC<Props> = ({ onNavigate }) => {
           resolve("");
         }
       }, timeoutMs);
-
       const unsub = onAuthStateChanged(getAuth(), async (u) => {
         if (!u) return;
         try {
@@ -132,58 +132,82 @@ const AIAdvisorPage: React.FC<Props> = ({ onNavigate }) => {
 
   const pushMessage = (m: ChatMessage) => setMessages((prev) => [...prev, m]);
 
-  // Try to resume chat (if server supports returning history with empty message)
-  useEffect(() => {
-    const resume = async () => {
-      const chatId = localStorage.getItem(LOCAL_CHAT_KEY);
-      if (!chatId || !firebaseUser) return;
-
-      setIsLoading(true);
-      setError(null);
-      try {
-        const token = await getIdToken(true);
-        if (!token) {
-          setError("You must be logged in to resume chat.");
-          return;
-        }
-
-        const res = await fetch("/api/ai/gemini/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ chatId, message: "" }),
-        });
-
-        const data = await res.json().catch(() => ({ error: "Invalid JSON" }));
-        if (!res.ok || data?.error) {
-          setError(data?.error ?? "Failed to resume chat.");
-        } else if (Array.isArray(data.history)) {
-          const ui = data.history.map((h: any) => ({
-            id: crypto.randomUUID(),
-            sender: h.role === "user" ? "user" : "ai",
-            text: h.text,
-          })) as ChatMessage[];
-          setMessages(ui.length ? ui : [{ id: "init", sender: "ai", text: INIT_TEXT }]);
-        } else if (typeof data.text === "string") {
-          setMessages([{ id: crypto.randomUUID(), sender: "ai", text: data.text }]);
-        }
-      } catch {
-        setError("Failed to resume chat.");
-      } finally {
-        setIsLoading(false);
+  // Resume or load selected chat history
+  const loadChat = async (chatId: string) => {
+    if (!firebaseUser) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const token = await getIdToken(true);
+      if (!token) {
+        setError("You must be logged in to load chat.");
+        return;
       }
-    };
-    resume();
+      const res = await fetch("/api/ai/gemini/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ chatId, message: "" }),
+      });
+      const data = await res.json().catch(() => ({ error: "Invalid JSON" }));
+      if (!res.ok || data?.error) {
+        setError(data?.error ?? "Failed to load chat.");
+      } else if (Array.isArray(data.history)) {
+        const ui = data.history.map((h: any) => ({
+          id: crypto.randomUUID(),
+          sender: h.role === "user" ? "user" : "ai",
+          text: h.text,
+        })) as ChatMessage[];
+        setMessages(ui.length ? ui : [{ id: "init", sender: "ai", text: INIT_TEXT }]);
+        localStorage.setItem(LOCAL_CHAT_KEY, chatId);
+        setActiveChatId(chatId);
+      }
+    } catch {
+      setError("Failed to load chat.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Auto-load active chat if we have one and user is ready
+  useEffect(() => {
+    const chatId = localStorage.getItem(LOCAL_CHAT_KEY);
+    if (chatId && firebaseUser) {
+      loadChat(chatId);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firebaseUser]);
+
+  const newChat = () => {
+    localStorage.removeItem(LOCAL_CHAT_KEY);
+    setActiveChatId(null);
+    setMessages([{ id: "init", sender: "ai", text: INIT_TEXT }]);
+    setError(null);
+  };
+
+  const deleteChat = async (id: string) => {
+    if (!firebaseUser) return;
+    try {
+      await deleteDoc(doc(db, "aiChats", id));
+      if (activeChatId === id) {
+        newChat();
+      }
+    } catch (e) {
+      console.error("Delete chat failed:", e);
+      setError("Could not delete chat.");
+    }
+  };
 
   const handleSend = async () => {
     if (isLoading) return;
     if (!firebaseUser) {
       setError("Please sign in to use the AI advisor.");
-      pushMessage({ id: crypto.randomUUID(), sender: "ai", text: "Please log in to chat with the advisor." });
+      pushMessage({
+        id: crypto.randomUUID(),
+        sender: "ai",
+        text: "Please log in to chat with the advisor.",
+      });
       return;
     }
-
     const trimmed = input.trim();
     if (!trimmed) return;
 
@@ -212,13 +236,15 @@ const AIAdvisorPage: React.FC<Props> = ({ onNavigate }) => {
 
       let res = await doCall(token);
       let data = await res.json().catch(() => ({ error: "Invalid JSON from server" }));
-
-      // If server says token invalid/expired (401), try refreshing token once then retry
       if (res.status === 401 || data?.error === "Invalid or expired ID token") {
         token = await getIdToken(true);
         if (!token) {
           setError("Unable to refresh ID token. Please sign in again.");
-          pushMessage({ id: crypto.randomUUID(), sender: "ai", text: "Please sign in again to continue." });
+          pushMessage({
+            id: crypto.randomUUID(),
+            sender: "ai",
+            text: "Please sign in again to continue.",
+          });
           setIsLoading(false);
           return;
         }
@@ -231,21 +257,32 @@ const AIAdvisorPage: React.FC<Props> = ({ onNavigate }) => {
         setError(msg);
         pushMessage({ id: crypto.randomUUID(), sender: "ai", text: `Error: ${msg}` });
       } else {
-        if (data.chatId) localStorage.setItem(LOCAL_CHAT_KEY, data.chatId);
+        if (data.chatId) {
+          localStorage.setItem(LOCAL_CHAT_KEY, data.chatId);
+          setActiveChatId(data.chatId);
+        }
         const aiText: string =
           typeof data.text === "string" ? data.text : Array.isArray(data.history) ? "" : "No reply.";
-        pushMessage({ id: crypto.randomUUID(), sender: "ai", text: aiText || "No reply from advisor." });
+        pushMessage({
+          id: crypto.randomUUID(),
+          sender: "ai",
+          text: aiText || "No reply from advisor.",
+        });
       }
     } catch (err) {
       console.error("handleSend exception:", err);
       setError("Failed to contact AI service.");
-      pushMessage({ id: crypto.randomUUID(), sender: "ai", text: "Sorry — couldn't reach the advisor." });
+      pushMessage({
+        id: crypto.randomUUID(),
+        sender: "ai",
+        text: "Sorry — couldn't reach the advisor.",
+      });
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Start report from the last user text by calling your summarise endpoint
+  // 🔧 Hardened handler
   const startReportFromLastUser = async () => {
     const text = lastUserTextRef.current.trim();
     if (!text) {
@@ -267,7 +304,6 @@ const AIAdvisorPage: React.FC<Props> = ({ onNavigate }) => {
       const token = await auth.currentUser?.getIdToken(true);
       if (!token) throw new Error("Missing ID token");
 
-      // IMPORTANT: your endpoint uses British spelling "summarise"
       const res = await fetch("/api/ai/gemini/summarise", {
         method: "POST",
         headers: {
@@ -276,126 +312,189 @@ const AIAdvisorPage: React.FC<Props> = ({ onNavigate }) => {
         },
         body: JSON.stringify({ text }),
       });
-      const data = await res.json();
 
-      if (!res.ok || data?.error) {
+      // Try to parse JSON; if HTML (e.g., 404 page), this will throw
+      let data: any = null;
+      try {
+        data = await res.json();
+      } catch {
+        throw new Error("The server returned an unexpected response.");
+      }
+
+      if (!(res.status === 200 || res.status === 201) || data?.error) {
         throw new Error(data?.error || "Summarisation failed");
       }
 
-      // navigate with structured prefill
-      onNavigate("report", { prefillStructured: data.summary });
+      const s = data?.summary;
+      if (!s || typeof s.title !== "string" || typeof s.category !== "string" || !Array.isArray(s.keyFacts)) {
+        throw new Error("Invalid summary format returned by server.");
+      }
+
+      onNavigate("report", { prefillStructured: s });
     } catch (e: any) {
       console.error("startReportFromLastUser error:", e);
       setError(e?.message || "Could not start report");
+      // Optional: also show this inline in chat to guide the user
+      pushMessage({
+        id: crypto.randomUUID(),
+        sender: "ai",
+        text: "I couldn’t prepare the report details. Please try again in a moment.",
+      });
     } finally {
       setIsLoading(false);
     }
   };
 
+  const handleKeyDown: React.KeyboardEventHandler<HTMLInputElement> = (e) => {
+    if (e.key === "Enter" && !isLoading) handleSend();
+  };
+
+  const sortedChats = useMemo(() => chats, [chats]);
+
   return (
-    <div className="flex flex-col h-[calc(100vh-200px)] max-w-3xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-800 dark:text-white">AI Advisor</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">Ask about policies, clubs, wellbeing…</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Button
-            variant="secondary"
-            onClick={() => {
-              localStorage.removeItem(LOCAL_CHAT_KEY);
-              setMessages([{ id: "init", sender: "ai", text: INIT_TEXT }]);
-              setError(null);
-            }}
-            className="rounded-xl"
-          >
-            New conversation
-          </Button>
-        </div>
-      </div>
-
-      <Card className="flex-grow flex flex-col rounded-2xl shadow-sm border border-slate-200/60 dark:border-slate-700/60">
-        {/* Messages */}
-        <div
-          className="flex-grow overflow-y-auto pr-2 -mr-2 space-y-4 p-4"
-          aria-live="polite"
-          aria-busy={isLoading ? "true" : "false"}
-        >
-          {messages.map((m) => {
-            const isAI = m.sender === "ai";
-            const wantsCTA = isAI && m.text.toLowerCase().includes("start a report");
-            return (
-              <ChatBubble
-                key={m.id}
-                isAI={isAI}
-                onAction={wantsCTA ? startReportFromLastUser : undefined}
-                timestamp={undefined}
-              >
-                {m.text}
-              </ChatBubble>
-            );
-          })}
-
-          {isLoading && (
-            <div className="flex items-end gap-2">
-              <div className="flex-shrink-0 w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-indigo-500 text-white flex items-center justify-center shadow-sm">
-                <span className="text-sm">✨</span>
-              </div>
-              <div className="max-w-[80%] rounded-2xl px-4 py-3 shadow-sm bg-slate-100 dark:bg-slate-700/70">
-                <div className="flex items-center gap-2 text-slate-500 dark:text-slate-300">
-                  <Spinner /> Thinking…
-                </div>
+    // Lock the panel height, prevent outer scroll, and allow inner panels to manage their own scrolling.
+    <div className="mx-auto max-w-6xl h-[calc(100vh-8rem)] min-h-0 overflow-hidden">
+      {/* Two-column layout; min-h-0 + overflow-hidden so the inner scroll area is the messages list */}
+      <div className="grid grid-cols-1 md:grid-cols-[1.5fr_3.5fr] gap-4 h-full min-h-0 overflow-hidden">
+        {/* Sidebar (darker blue than chat area) */}
+        <aside className="hidden md:block h-full min-h-0 overflow-hidden">
+          <Card className="h-full min-h-0 flex flex-col overflow-hidden bg-blue-900/40 dark:bg-blue-900/50 border-blue-900/50">
+            <div className="px-4 py-3 border-b border-blue-800/60">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-blue-50">Your chats</p>
+                <Button size="sm" variant="secondary" onClick={newChat}>
+                  New
+                </Button>
               </div>
             </div>
-          )}
 
-          <div ref={messagesEndRef} />
-        </div>
-
-        {/* Sticky composer */}
-        <div className="sticky bottom-0 left-0 bg-white/70 dark:bg-slate-900/60 backdrop-blur supports-[backdrop-filter]:bg-white/50 dark:supports-[backdrop-filter]:bg-slate-900/40">
-          <div className="border-t border-slate-200 dark:border-slate-700 p-3">
-            <div className="flex items-end gap-3">
-              <textarea
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    if (!isLoading) handleSend();
-                  }
-                }}
-                rows={1}
-                placeholder="Type your message… (Shift+Enter for newline)"
-                disabled={isLoading || !firebaseUser}
-                className="flex-1 max-h-40 min-h-[44px] resize-none rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2
-                           focus:outline-none focus:ring-2 focus:ring-blue-500"
-                aria-label="Chat input"
-              />
-              <Button
-                onClick={handleSend}
-                disabled={isLoading || !input.trim() || !firebaseUser}
-                aria-label="Send message"
-                className="rounded-xl active:scale-[0.98]"
-              >
-                {isLoading ? <Spinner /> : <IconPaperAirplane />}
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={startReportFromLastUser}
-                disabled={!lastUserTextRef.current || isLoading}
-                className="rounded-xl active:scale-[0.98]"
-              >
-                Start a Report
-              </Button>
+            {/* Scrollable chat list */}
+            <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-2 space-y-1">
+              {sortedChats.length === 0 && (
+                <div className="text-xs text-blue-100/80 px-2 pt-3">No conversations yet.</div>
+              )}
+              {sortedChats.map((c) => {
+                const isActive = activeChatId === c.id;
+                const label =
+                  c.title?.trim() ||
+                  c.lastUser?.slice(0, 40) ||
+                  "Untitled chat";
+                return (
+                  <div
+                    key={c.id}
+                    className={`group flex items-center justify-between gap-2 rounded-md px-2 py-2 cursor-pointer ${
+                      isActive
+                        ? "bg-blue-800/50 text-blue-50"
+                        : "hover:bg-blue-800/30 text-blue-100"
+                    }`}
+                  >
+                    <button
+                      className="truncate text-left flex-1"
+                      onClick={() => loadChat(c.id)}
+                      title={label}
+                    >
+                      {label}
+                    </button>
+                    <button
+                      className="opacity-70 hover:opacity-100 text-xs"
+                      title="Delete chat"
+                      onClick={() => deleteChat(c.id)}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                );
+              })}
             </div>
-            <div className="flex justify-between mt-2 text-xs text-slate-500 dark:text-slate-400">
-              <span>Press Enter to send</span>
-              {error && <span className="text-red-500">{error}</span>}
+          </Card>
+        </aside>
+
+        {/* Chat panel (lighter surface; messages list is the only scroll area) */}
+        <section className="h-full min-h-0 overflow-hidden pt-2">
+          <div className="flex items-center justify-between mb-4 px-1">
+            <h1 className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white">AI Advisor</h1>
+            <div className="flex items-center gap-3">
+              <Button variant="secondary" onClick={newChat}>New conversation</Button>
             </div>
           </div>
-        </div>
-      </Card>
+
+          <Card className="h-[calc(100%-2.75rem)] min-h-0 flex flex-col overflow-hidden bg-white/90 dark:bg-slate-800/80">
+            {/* Messages — the sole scroll region */}
+            <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
+              {messages.map((m) => {
+                const isAI = m.sender === "ai";
+                return (
+                  <div key={m.id} className={`flex items-end gap-2 ${!isAI ? "justify-end" : ""}`}>
+                    {isAI && (
+                      <div className="flex-shrink-0 w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white">
+                        <IconSparkles />
+                      </div>
+                    )}
+                    <div
+                      className={`max-w-[80%] p-3 rounded-lg ${
+                        !isAI
+                          ? "bg-blue-600 text-white rounded-br-none"
+                          : "bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-bl-none"
+                      }`}
+                    >
+                      <p className="whitespace-pre-wrap">{m.text}</p>
+                      {isAI && m.text.toLowerCase().includes("start a report") && (
+                        <Button className="mt-3" variant="secondary" onClick={startReportFromLastUser}>
+                          Start a Report
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {isLoading && (
+                <div className="flex items-end gap-2">
+                  <div className="flex-shrink-0 w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white">
+                    <IconSparkles />
+                  </div>
+                  <div className="max-w-[80%] p-3 rounded-lg bg-slate-100 dark:bg-slate-700">
+                    <div className="flex items-center gap-2 text-slate-500 dark:text-slate-300">
+                      <Spinner /> Thinking...
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* Composer — pinned, non-scrollable */}
+            <div className="border-t border-slate-200 dark:border-slate-700 p-3">
+              <div className="flex items-center gap-2">
+                <Input
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Ask about rules, clubs, wellbeing..."
+                  disabled={isLoading || !firebaseUser}
+                  aria-label="Chat input"
+                />
+                <Button
+                  onClick={handleSend}
+                  disabled={isLoading || !input.trim() || !firebaseUser}
+                  aria-label="Send message"
+                >
+                  {isLoading ? <Spinner /> : <IconPaperAirplane />}
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={startReportFromLastUser}
+                  disabled={isLoading || !firebaseUser}
+                >
+                  Start a Report
+                </Button>
+              </div>
+
+              {error && <p className="text-red-500 text-sm mt-3 text-center">{error}</p>}
+            </div>
+          </Card>
+        </section>
+      </div>
     </div>
   );
 };

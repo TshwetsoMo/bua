@@ -1,4 +1,4 @@
-// app/api/ai/gemini/summarize/route.ts
+// app/api/ai/gemini/summarise/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import admin from "firebase-admin";
 import { GoogleGenAI } from "@google/genai";
@@ -18,10 +18,15 @@ if (!admin.apps.length) {
     } else {
       admin.initializeApp();
     }
-    console.log("Firebase Admin initialized for summarize route.");
+    console.log("Firebase Admin initialized for summarise route.");
   } catch (e) {
-    console.error("Firebase Admin init failed (summarize):", e);
+    console.error("Firebase Admin init failed (summarise):", e);
   }
+}
+
+// ---- Guard: API key presence ----
+if (!process.env.GEMINI_API_KEY || !process.env.GEMINI_API_KEY.trim()) {
+  console.error("[summarise] Missing GEMINI_API_KEY env var.");
 }
 
 // ---- Gemini init ----
@@ -31,9 +36,8 @@ const ai = new GoogleGenAI({
 
 const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
-// Small helper to safely pull JSON out of an LLM response
+// Safely extract JSON from an LLM response block (first {...} object)
 function extractJsonBlock(text: string): any | null {
-  // Try to find the first {...} JSON object in the output
   const match = text.match(/\{[\s\S]*\}/);
   if (!match) return null;
   try {
@@ -41,6 +45,25 @@ function extractJsonBlock(text: string): any | null {
   } catch {
     return null;
   }
+}
+
+// Try multiple SDK shapes to get text
+function coerceOutputText(result: any): string {
+  // Newer SDKs
+  if (result?.response?.text && typeof result.response.text === "function") {
+    try { return result.response.text(); } catch {}
+  }
+  if (typeof result?.output_text === "string") return result.output_text;
+
+  // Legacy/candidates shape
+  const candidateText = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (typeof candidateText === "string") return candidateText;
+
+  // Some wrappers attach .text directly
+  if (typeof result?.text === "string") return result.text;
+
+  // Fallback: stringify
+  try { return JSON.stringify(result); } catch { return String(result ?? ""); }
 }
 
 export async function POST(req: NextRequest) {
@@ -58,7 +81,7 @@ export async function POST(req: NextRequest) {
     try {
       await admin.auth().verifyIdToken(idToken);
     } catch (err) {
-      console.error("verifyIdToken failed (summarize):", err);
+      console.error("verifyIdToken failed (summarise):", err);
       return NextResponse.json({ error: "Invalid or expired ID token" }, { status: 401 });
     }
 
@@ -67,6 +90,13 @@ export async function POST(req: NextRequest) {
     const text: string = typeof body.text === "string" ? body.text.trim() : "";
     if (!text) {
       return NextResponse.json({ error: "text is required" }, { status: 400 });
+    }
+
+    if (!process.env.GEMINI_API_KEY) {
+      return NextResponse.json(
+        { error: "Server configuration error (missing GEMINI_API_KEY)" },
+        { status: 500 }
+      );
     }
 
     // 3) Ask Gemini for a structured summary (JSON only)
@@ -86,23 +116,14 @@ Student message:
 """${text}"""
 `;
 
-    // Use the models.generateContent API (keeps us away from "system" role issues)
     const result = await ai.models.generateContent({
       model: MODEL,
       contents: [{ role: "user", parts: [{ text: prompt }] }],
     });
 
-    // Robustly extract text
-    let outText = "";
-    if (typeof (result as any)?.text === "string") {
-      outText = (result as any).text;
-    } else if ((result as any)?.candidates?.[0]?.content?.parts?.[0]?.text) {
-      outText = (result as any).candidates[0].content.parts[0].text;
-    } else {
-      outText = JSON.stringify((result as any), null, 2);
-    }
-
+    const outText = coerceOutputText(result);
     const parsed = extractJsonBlock(outText);
+
     if (!parsed) {
       return NextResponse.json(
         { error: "AI did not return valid JSON", raw: outText?.slice(0, 500) },
@@ -119,9 +140,9 @@ Student message:
     if (typeof parsed.title !== "string") parsed.title = "Issue report";
     if (typeof parsed.description !== "string") parsed.description = text;
 
-    return NextResponse.json({ summary: parsed });
+    return NextResponse.json({ summary: parsed }, { status: 200 });
   } catch (err) {
-    console.error("[summarize] unexpected error:", err);
+    console.error("[summarise] unexpected error:", err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }

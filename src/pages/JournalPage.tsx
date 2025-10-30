@@ -12,6 +12,7 @@ import {
   addDoc,
   collection,
   getDocs,
+  limit,
   onSnapshot,
   orderBy,
   query,
@@ -23,18 +24,19 @@ interface JournalPageProps {
   currentUser: User;
 }
 
+// Tunables
+const MAX_CASES = 6;           // how many recent cases to include per entry
+const RECENT_JOURNAL_WINDOW = 2; // how many recent journal entries to guard against repetition
 
+// Helper builds anonymized, non-link evidence metadata
 function buildAnonymisedEvidenceMetadata(data: any): { evidenceCount: number; evidenceTypes: string[] } {
   let count = 0;
   const types = new Set<string>();
 
-  
   if (data?.evidenceUrl) {
     count += 1;
-
     if (data?.evidenceType) types.add(String(data.evidenceType));
     else {
-      
       const ext = String(data.evidenceUrl).split(".").pop()?.toLowerCase() ?? "";
       if (["jpg", "jpeg", "png", "gif", "webp", "heic"].includes(ext)) types.add("image");
       else if (["pdf"].includes(ext)) types.add("pdf");
@@ -52,21 +54,22 @@ function buildAnonymisedEvidenceMetadata(data: any): { evidenceCount: number; ev
     });
   }
 
-  
   if (data?.evidence && typeof data.evidence === "object" && !Array.isArray(data.evidence)) {
-    
     if (typeof data.evidence.count === "number") count += data.evidence.count;
     if (Array.isArray(data.evidence.types)) data.evidence.types.forEach((t: string) => types.add(t));
   }
 
-  
   if (data?.evidenceType && !types.has(String(data.evidenceType))) {
     types.add(String(data.evidenceType));
-    
     if (count === 0) count = 1;
   }
 
   return { evidenceCount: count, evidenceTypes: Array.from(types) };
+}
+
+// Simple normaliser to detect exact duplicates after generation
+function normalise(str: string): string {
+  return (str || "").trim().replace(/\s+/g, " ").toLowerCase();
 }
 
 const JournalPage: React.FC<JournalPageProps> = ({ currentUser }) => {
@@ -75,7 +78,6 @@ const JournalPage: React.FC<JournalPageProps> = ({ currentUser }) => {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  
   useEffect(() => {
     const q = query(collection(db, "journal"), orderBy("publishedAt", "desc"));
     const unsub = onSnapshot(
@@ -89,7 +91,6 @@ const JournalPage: React.FC<JournalPageProps> = ({ currentUser }) => {
             content: data.content,
             publishedAt: data.publishedAt?.toDate ? data.publishedAt.toDate() : new Date(data.publishedAt),
             relatedCaseIds: data.relatedCaseIds ?? [],
-            
           } as JournalEntry;
         });
         setEntries(docs);
@@ -107,7 +108,6 @@ const JournalPage: React.FC<JournalPageProps> = ({ currentUser }) => {
     setError(null);
     setSuccessMessage(null);
 
-    // Only admins can generate entries
     if (currentUser.role !== RoleEnum.Admin) {
       setError("Only admins can generate journal entries.");
       return;
@@ -116,12 +116,30 @@ const JournalPage: React.FC<JournalPageProps> = ({ currentUser }) => {
     setIsGenerating(true);
 
     try {
-      // 1) fetch resolved cases from Firestore
-      // We query only the necessary fields and will anonymise evidence metadata
+      // 0) Load last few journal entries to avoid repetition
+      const recentJournalQuery = query(
+        collection(db, "journal"),
+        orderBy("publishedAt", "desc"),
+        limit(RECENT_JOURNAL_WINDOW)
+      );
+      const recentJournalSnap = await getDocs(recentJournalQuery);
+      const recentJournal = recentJournalSnap.docs.map((d) => {
+        const data = d.data() as any;
+        return {
+          id: d.id,
+          content: String(data.content || ""),
+          relatedCaseIds: Array.isArray(data.relatedCaseIds) ? data.relatedCaseIds.map(String) : [],
+        };
+      });
+
+      const lastEntry = recentJournal[0];
+
+      // 1) Fetch the most recent resolved cases (we’ll top up to MAX_CASES)
       const casesQuery = query(
         collection(db, "cases"),
         where("status", "==", CaseStatusEnum.Resolved),
-        orderBy("createdAt", "desc")
+        orderBy("createdAt", "desc"),
+        limit(50) // we fetch a little more to allow filtering
       );
       const snap = await getDocs(casesQuery);
 
@@ -131,20 +149,18 @@ const JournalPage: React.FC<JournalPageProps> = ({ currentUser }) => {
         return;
       }
 
-      
-      const resolvedCases: Case[] = []; 
+      const resolvedCasesAll: Case[] = [];
       const evidenceSummary: { caseId: string; evidenceCount: number; evidenceTypes: string[] }[] = [];
 
       snap.docs.forEach((d) => {
         const data = d.data() as any;
 
-        
         const c: Case = {
           id: d.id,
           studentId: data.studentId ?? "redacted",
           title: data.title ?? "Untitled",
           category: data.category ?? "General",
-          description: "", 
+          description: "",
           redactedDescription: data.redactedDescription ?? (data.description ? "[REDACTED]" : ""),
           evidence: null,
           status: data.status ?? CaseStatusEnum.Resolved,
@@ -153,16 +169,14 @@ const JournalPage: React.FC<JournalPageProps> = ({ currentUser }) => {
               id: m.id,
               sender: m.sender,
               text: m.text,
-              
               timestamp: m.timestamp?.toDate ? m.timestamp.toDate() : new Date(m.timestamp),
             })) ?? [],
           resolutionNote: data.resolutionNote ?? "",
           createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt),
         } as Case;
 
-        resolvedCases.push(c);
+        resolvedCasesAll.push(c);
 
-        // Build anonymised evidence metadata for this case
         const meta = buildAnonymisedEvidenceMetadata(data);
         evidenceSummary.push({
           caseId: d.id,
@@ -171,35 +185,77 @@ const JournalPage: React.FC<JournalPageProps> = ({ currentUser }) => {
         });
       });
 
-      // 2) create an anonymised summary for the journal using only redactedDescription and category
-      // To be safe, we pass the Case[] that contains only redactedDescription (no PII or URLs).
-      const summary = await geminiService.summarizeForJournal(
-        resolvedCases.map((c) => ({
-          id: c.id,
-          category: c.category,
-          redactedDescription: c.redactedDescription,
-        } as any))
+      // 2) Avoid repetition: skip cases used in the last few journal entries
+      const usedRecently = new Set<string>(
+        recentJournal.flatMap((j) => j.relatedCaseIds)
       );
 
-      // 3) write new journal entry to Firestore with anonymised evidence metadata (no links or filenames)
+      const uniqueRecent = resolvedCasesAll.filter((c) => !usedRecently.has(c.id));
+      // Take newest unique first
+      const picked: Case[] = uniqueRecent.slice(0, MAX_CASES);
+
+      // If we don't have enough, top-up with the newest ones (even if used), but
+      // still ensure we don't duplicate *exactly* the last entry's case set.
+      if (picked.length < MAX_CASES) {
+        const needed = MAX_CASES - picked.length;
+        const topUp = resolvedCasesAll
+          .filter((c) => !picked.find((p) => p.id === c.id))
+          .slice(0, needed);
+        picked.push(...topUp);
+      }
+
+      if (picked.length === 0) {
+        setError("No new cases to summarise for the journal right now.");
+        setIsGenerating(false);
+        return;
+      }
+
+      // Guard: if picked cases are exactly the same as the last entry's relatedCaseIds, abort
+      if (lastEntry) {
+        const lastSet = new Set(lastEntry.relatedCaseIds);
+        const pickedSet = new Set(picked.map((c) => c.id));
+        const sameSize = lastSet.size === pickedSet.size;
+        const sameMembers = sameSize && [...pickedSet].every((id) => lastSet.has(id));
+        if (sameMembers) {
+          setError("New journal would repeat the same set of cases as the last entry. Try later when new cases are available.");
+          setIsGenerating(false);
+          return;
+        }
+      }
+
+      // 3) Summarise (only pass anonymised fields)
+      const summary = await geminiService.summariseCasesForJournal(
+        picked.map((c) => ({
+          id: c.id,
+          category: c.category,
+          redactedDescription: c.redactedDescription || "",
+        }))
+      );
+
+      // Post-gen duplicate content guard: block if identical text as last
+      if (lastEntry && normalise(summary) === normalise(lastEntry.content)) {
+        setError("Generated journal is too similar to the previous one. Please try again later when new cases arrive.");
+        setIsGenerating(false);
+        return;
+      }
+
+      // 4) Save journal entry
       const title = `Journal Entry - ${new Date().toLocaleDateString()}`;
       const newDoc = {
         title,
         content: summary,
-        relatedCaseIds: resolvedCases.map((c) => c.id),
-        evidenceSummary, // anonymised metadata only
+        relatedCaseIds: picked.map((c) => c.id),
+        evidenceSummary: evidenceSummary.filter((e) => picked.some((c) => c.id === e.caseId)),
         publishedAt: serverTimestamp(),
       };
 
       await addDoc(collection(db, "journal"), newDoc);
-
-      setSuccessMessage("Journal entry generated successfully (anonymised).");
+      setSuccessMessage("Journal entry generated successfully (anonymised, recent cases).");
     } catch (err) {
       console.error("Error generating journal entry:", err);
       setError("Failed to generate journal entry. Please try again.");
     } finally {
       setIsGenerating(false);
-      
       setTimeout(() => setSuccessMessage(null), 4000);
     }
   };
