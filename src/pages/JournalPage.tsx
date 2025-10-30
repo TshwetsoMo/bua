@@ -25,8 +25,8 @@ interface JournalPageProps {
 }
 
 // Tunables
-const MAX_CASES = 6;           // how many recent cases to include per entry
-const RECENT_JOURNAL_WINDOW = 2; // how many recent journal entries to guard against repetition
+const MAX_CASES = 2;             // ⬅️ use only the latest 2 resolved cases
+const RECENT_JOURNAL_WINDOW = 2; // guard against repetition with the last 2 entries
 
 // Helper builds anonymized, non-link evidence metadata
 function buildAnonymisedEvidenceMetadata(data: any): { evidenceCount: number; evidenceTypes: string[] } {
@@ -134,12 +134,12 @@ const JournalPage: React.FC<JournalPageProps> = ({ currentUser }) => {
 
       const lastEntry = recentJournal[0];
 
-      // 1) Fetch the most recent resolved cases (we’ll top up to MAX_CASES)
+      // 1) Fetch the most recent resolved cases (fetch more than needed to allow filtering)
       const casesQuery = query(
         collection(db, "cases"),
         where("status", "==", CaseStatusEnum.Resolved),
         orderBy("createdAt", "desc"),
-        limit(50) // we fetch a little more to allow filtering
+        limit(50)
       );
       const snap = await getDocs(casesQuery);
 
@@ -185,17 +185,15 @@ const JournalPage: React.FC<JournalPageProps> = ({ currentUser }) => {
         });
       });
 
-      // 2) Avoid repetition: skip cases used in the last few journal entries
+      // 2) Avoid repetition: skip cases used in recent journal entries
       const usedRecently = new Set<string>(
         recentJournal.flatMap((j) => j.relatedCaseIds)
       );
 
       const uniqueRecent = resolvedCasesAll.filter((c) => !usedRecently.has(c.id));
-      // Take newest unique first
       const picked: Case[] = uniqueRecent.slice(0, MAX_CASES);
 
-      // If we don't have enough, top-up with the newest ones (even if used), but
-      // still ensure we don't duplicate *exactly* the last entry's case set.
+      // If not enough, top up with newest ones (even if used), but avoid exact repeat of last set
       if (picked.length < MAX_CASES) {
         const needed = MAX_CASES - picked.length;
         const topUp = resolvedCasesAll
@@ -210,7 +208,7 @@ const JournalPage: React.FC<JournalPageProps> = ({ currentUser }) => {
         return;
       }
 
-      // Guard: if picked cases are exactly the same as the last entry's relatedCaseIds, abort
+      // Guard: if picked cases equal the last entry's relatedCaseIds, abort
       if (lastEntry) {
         const lastSet = new Set(lastEntry.relatedCaseIds);
         const pickedSet = new Set(picked.map((c) => c.id));
@@ -232,7 +230,7 @@ const JournalPage: React.FC<JournalPageProps> = ({ currentUser }) => {
         }))
       );
 
-      // Post-gen duplicate content guard: block if identical text as last
+      // Post-gen duplicate content guard
       if (lastEntry && normalise(summary) === normalise(lastEntry.content)) {
         setError("Generated journal is too similar to the previous one. Please try again later when new cases arrive.");
         setIsGenerating(false);
@@ -240,7 +238,7 @@ const JournalPage: React.FC<JournalPageProps> = ({ currentUser }) => {
       }
 
       // 4) Save journal entry
-      const title = `Journal Entry - ${new Date().toLocaleDateString()}`;
+      const title = `News Update - ${new Date().toLocaleDateString()}`;
       const newDoc = {
         title,
         content: summary,
@@ -268,7 +266,7 @@ const JournalPage: React.FC<JournalPageProps> = ({ currentUser }) => {
     <div className="max-w-4xl mx-auto">
       <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
         <h1 className="text-3xl font-bold text-slate-800 dark:text-white text-center sm:text-left">
-          Anonymised Journal
+          Anonymised News Feed
         </h1>
 
         {currentUser.role === RoleEnum.Admin && (
@@ -309,3 +307,4 @@ const JournalPage: React.FC<JournalPageProps> = ({ currentUser }) => {
 };
 
 export default JournalPage;
+

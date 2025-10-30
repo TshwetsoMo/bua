@@ -173,11 +173,11 @@ export default function App({ currentUser, onSignOut }: AppProps) {
       { name: "AI Advisor", page: "advisor" },
       { name: "Report an Issue", page: "report" },
       { name: "My Cases", page: "tracker" },
-      { name: "Journal", page: "journal" },
+      { name: "News Feed", page: "journal" },
     ],
     [RoleEnum.Admin]: [
       { name: "Admin Console", page: "admin" },
-      { name: "Journal", page: "journal" },
+      { name: "News Feed", page: "journal" },
     ],
   };
 
