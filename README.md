@@ -1,7 +1,7 @@
 # 🗣️ Bua — AI-Powered Student Voice & Reporting Platform
 
 **Developer:** Tshwetso K. Mokgatlhe  
-**Institution:** The Open Window Institute — Faculty of Creative Technologies  
+**Institution:** The Open Window Institute, Faculty of Creative Technologies  
 **Modules:** DV300 (Interaction Development) & UX300 (User Experience Design)  
 **Supervisor:** Armand Pretorius  
 **Date:** 2025  
@@ -9,7 +9,7 @@
 
 ## 🌍 Overview
 
-**Bua** (meaning _“Speak”_ in Setswana) is an **AI-powered web application** designed to empower South African learners to safely report issues in their schools — such as **unfair rules, discrimination, bullying, misconduct**, or **neglected facilities** — through a secure and anonymised digital platform.
+**Bua** (meaning _“Speak”_ in Setswana) is an **AI-powered web application** designed to empower South African learners to safely report issues in their schools, such as **unfair rules, discrimination, bullying, misconduct**, or **neglected facilities**, through a secure and anonymised digital platform managed by a school's Student Representitive Council.
 
 The system combines **AI language models**, **Firebase backend services**, and **React-based user experience design** to ensure that every report is private, lawful, and actionable.  
 Reports are automatically **summarised**, **redacted for PII**, and **categorised** before being routed to the relevant authority (School Governing Body, SACE, or SAHRC).
@@ -106,7 +106,7 @@ yaml
 
 - Node.js **v18 or later**
 - Firebase project (with Firestore + Authentication enabled)
-- Google Gemini API key (optional — mock service is built-in for offline use)
+- Google Gemini API key (optional mock service is built-in for offline use)
 
 ### 2️⃣ Clone Repository
 
