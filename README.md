@@ -20,37 +20,6 @@ Reports are automatically **summarised**, **redacted for PII**, and **categorise
   <img src="src/assets/Mockup3.png" alt="Bua Web App Mockup" width="80%" style="border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);" />
 </p>
 
-## 🚀 Core Features
-
-### 🧠 AI Advisor
-
-- Built-in conversational assistant powered by **Google Gemini API (2.5 Flash)**.
-- Offers guidance on school policies, wellbeing, and rights.
-- Users can seamlessly **“Start a Report”** from any conversation context.
-
-### 📋 Smart Report Submission
-
-- Automatically **redacts personally identifiable information (PII)** using AI.
-- Classifies issues by topic: _Bullying, Academics, Facilities, Policy, Other_.
-- Generates structured report drafts for review and submission.
-
-### 📰 News Feed (formerly “Journal”)
-
-- Generates **anonymised summaries** of resolved cases into a public “News Update” feed.
-- Highlights systemic patterns and school-wide trends.
-- Avoids repetitive posts and always references the latest cases first.
-
-### 🧑‍💼 Admin Dashboard
-
-- Administrators can manage reports and generate public News Feed entries.
-- AI-assisted journal generation summarises key cases while maintaining confidentiality.
-
-### 🔒 Privacy & Safety
-
-- All user reports are anonymised at the point of submission.
-- PII is detected and replaced with placeholders such as `[REDACTED_PERSON]` or `[REDACTED_LOCATION]`.
-- Access is role-controlled via Firebase Authentication (Admin vs Student).
-
 ## 🧩 Tech Stack
 
 | Layer                | Technology / Library                                         |
@@ -155,6 +124,37 @@ Deploy via:
 Vercel: vercel --prod
 
 Firebase Hosting: firebase deploy
+
+## 🚀 Core Features
+
+### 🧠 AI Advisor
+
+- Built-in conversational assistant powered by **Google Gemini API (2.5 Flash)**.
+- Offers guidance on school policies, wellbeing, and rights.
+- Users can seamlessly **“Start a Report”** from any conversation context.
+
+### 📋 Smart Report Submission
+
+- Automatically **redacts personally identifiable information (PII)** using AI.
+- Classifies issues by topic: _Bullying, Academics, Facilities, Policy, Other_.
+- Generates structured report drafts for review and submission.
+
+### 📰 News Feed (formerly “Journal”)
+
+- Generates **anonymised summaries** of resolved cases into a public “News Update” feed.
+- Highlights systemic patterns and school-wide trends.
+- Avoids repetitive posts and always references the latest cases first.
+
+### 🧑‍💼 Admin Dashboard
+
+- Administrators can manage reports and generate public News Feed entries.
+- AI-assisted journal generation summarises key cases while maintaining confidentiality.
+
+### 🔒 Privacy & Safety
+
+- All user reports are anonymised at the point of submission.
+- PII is detected and replaced with placeholders such as `[REDACTED_PERSON]` or `[REDACTED_LOCATION]`.
+- Access is role-controlled via Firebase Authentication (Admin vs Student).
 
 ## 🧠 AI Integration
 
