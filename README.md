@@ -109,17 +109,16 @@ yaml
 - Google Gemini API key (optional mock service is built-in for offline use)
 
 ### 2️⃣ Clone Repository
-
+```
 git clone https://github.com/<your-username>/bua.git
 cd bua
 npm install
-
+```
 ### 3️⃣ Configure Environment Variables
 
 Create .env.local at the root:
 
-bash
-Copy code
+```
 NEXT_PUBLIC_FIREBASE_API_KEY=your_api_key
 NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
 NEXT_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
@@ -130,18 +129,21 @@ NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
 FIREBASE_SERVICE_ACCOUNT_JSON={"type":"service_account", ...}
 GEMINI_API_KEY=your_gemini_api_key
 GEMINI_MODEL=gemini-2.5-flash
+```
 
 ### 4️⃣ Run Development Server
-
+```
 npm run dev
+```
 Visit: http://localhost:3000
 
 ### 5️⃣ Build & Deploy
 
 For production:
-
+```
 npm run build
 npm run start
+```
 Deploy via:
 
 Vercel: vercel --prod
