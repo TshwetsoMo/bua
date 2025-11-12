@@ -14,6 +14,12 @@
 The system combines **AI language models**, **Firebase backend services**, and **React-based user experience design** to ensure that every report is private, lawful, and actionable.  
 Reports are automatically **summarised**, **redacted for PII**, and **categorised** before being routed to the relevant authority (School Governing Body, SACE, or SAHRC).
 
+<p align="center">
+  <img src="src/assets/Mockup1.png" alt="Bua Web App Mockup" width="80%" style="border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);" />
+  <img src="src/assets/Mockup2.png" alt="Bua Web App Mockup" width="80%" style="border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);" />
+  <img src="src/assets/Mockup3.png" alt="Bua Web App Mockup" width="80%" style="border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);" />
+</p>
+
 ## 🚀 Core Features
 
 ### 🧠 AI Advisor
