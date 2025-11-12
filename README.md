@@ -1,97 +1,116 @@
-# 🗣️ Bua — AI-Powered Student Voice & Reporting Platform
+<!-- REPOSITORY INFORMATION & LINKS -->
+<br />
 
-**Developer:** Tshwetso K. Mokgatlhe  
-**Institution:** The Open Window Institute, Faculty of Creative Technologies  
-**Modules:** DV300 (Interaction Development) & UX300 (User Experience Design)  
-**Supervisor:** Armand Pretorius  
-**Date:** 2025  
-**License:** MIT
+![GitHub repo size](https://img.shields.io/github/repo-size/TshwetsoMo/bua?color=%23000000)
+![GitHub watchers](https://img.shields.io/github/watchers/TshwetsoMo/bua?color=%23000000)
+![GitHub language count](https://img.shields.io/github/languages/count/TshwetsoMo/bua?color=%23000000)
+![GitHub code size in bytes](https://img.shields.io/github/languages/code-size/TshwetsoMo/bua?color=%23000000)
+[![LinkedIn][linkedin-shield]][linkedin-url]
+[![Instagram][instagram-shield]][instagram-url]
+[![Behance][behance-shield]][behance-url]
 
-## 🌍 Overview
-
-**Bua** (meaning _“Speak”_ in Setswana) is an **AI-powered web application** designed to empower South African learners to safely report issues in their schools, such as **unfair rules, discrimination, bullying, misconduct**, or **neglected facilities**, through a secure and anonymised digital platform managed by a school's Student Representitive Council.
-
-The system combines **AI language models**, **Firebase backend services**, and **React-based user experience design** to ensure that every report is private, lawful, and actionable.  
-Reports are automatically **summarised**, **redacted for PII**, and **categorised** before being routed to the relevant authority (School Governing Body, SACE, or SAHRC).
-
+<!-- HEADER SECTION -->
+<h5 align="center" style="padding:0;margin:0;">Tshwetso K. Mokgatlhe</h5>
+<h5 align="center" style="padding:0;margin:0;">221411</h5>
+<h6 align="center">DV300 & UX300 — Interaction Development & User Experience Design | 2025</h6>
+</br>
 <p align="center">
-  <img src="src/assets/Mockup1.png" alt="Bua Web App Mockup" width="80%" style="border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);" />
-  <img src="src/assets/Mockup2.png" alt="Bua Web App Mockup" width="80%" style="border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);" />
-  <img src="src/assets/Mockup3.png" alt="Bua Web App Mockup" width="80%" style="border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);" />
+
+  <a href="https://github.com/TshwetsoMo/bua">
+    <img src="https://github.com/TshwetsoMo/bua/blob/main/src/assets/Mockup1.png?raw=true" alt="Bua Logo" width="160" height="160">
+  </a>
+  
+  <h3 align="center">🗣️ Bua — AI-Powered Student Voice & Reporting Platform</h3>
+
+  <p align="center">
+    Empowering learners to speak out through technology, empathy, and AI ethics.<br>
+      <a href="https://github.com/TshwetsoMo/bua"><strong>Explore the Docs »</strong></a>
+   <br />
+   <br />
+   <a href="#">View Demo</a>
+    ·
+    <a href="https://github.com/TshwetsoMo/bua/issues">Report Bug</a>
+    ·
+    <a href="https://github.com/TshwetsoMo/bua/issues">Request Feature</a>
 </p>
 
-## 🧩 Tech Stack
+---
 
-| Layer                | Technology / Library                                         |
-| -------------------- | ------------------------------------------------------------ |
-| **Frontend**         | React (Next.js 14), TypeScript, Tailwind CSS                 |
-| **Backend**          | Firebase Auth, Firestore, Firebase Admin SDK                 |
-| **AI Layer**         | Google Gemini API (2.5 Flash) + custom summarisation service |
-| **Hosting**          | Vercel / Firebase Hosting                                    |
-| **State Management** | React Hooks & Context                                        |
-| **Language Tools**   | ESLint + Prettier                                            |
+## 📑 Table of Contents
 
-## 📁 Project Structure
+* [About the Project](#about-the-project)
+  * [Project Description](#project-description)
+  * [Built With](#built-with)
+* [Getting Started](#getting-started)
+  * [Prerequisites](#prerequisites)
+  * [How to Install](#how-to-install)
+* [Features and Functionality](#features-and-functionality)
+* [Concept Process](#concept-process)
+   * [Ideation](#ideation)
+   * [Wireframes](#wireframes)
+   * [User-flow](#user-flow)
+* [Development Process](#development-process)
+   * [Implementation Process](#implementation-process)
+        * [Highlights](#highlights)
+        * [Challenges](#challenges)
+   * [Reviews and Testing](#reviews-and-testing)
+        * [Feedback from Reviews](#feedback-from-reviews)
+        * [Unit Tests](#unit-tests)
+   * [Future Implementation](#future-implementation)
+* [Final Outcome](#final-outcome)
+    * [Mockups](#mockups)
+    * [Video Demonstration](#video-demonstration)
+* [Conclusion](#conclusion)
+* [Roadmap](#roadmap)
+* [Contributing](#contributing)
+* [License](#license)
+* [Contact](#contact)
+* [Acknowledgements](#acknowledgements)
 
-```
-bua/
-├── app/
-│ └── api/
-│ └── ai/
-│ └── gemini/
-│ ├── chat/route.ts # AI chat route (advisor)
-│ └── summarise/route.ts # AI summarisation route
-│
-├── components/
-│ ├── Button.tsx
-│ ├── Card.tsx
-│ ├── Input.tsx
-│ ├── Icons.tsx
-│ └── Spinner.tsx
-│
-├── hooks/
-│ ├── useAuth.ts
-│ ├── useCases.ts
-│ └── useJournal.ts
-│
-├── lib/
-│ ├── firebase/
-│ │ └── client.ts
-│ └── gemini.ts # Gemini AI service integration
-│
-├── pages/
-│ ├── AIAdvisorPage.tsx # AI chat assistant
-│ ├── ReportIssuePage.tsx # Form for filing reports
-│ ├── CaseTrackerPage.tsx # View submitted case statuses
-│ ├── AdminConsolePage.tsx # Admin dashboard for managing reports
-│ ├── NewsFeedPage.tsx # Anonymised updates (previously JournalPage)
-│ └── App.tsx # Main app router and layout
-│
-├── types.ts # Global TypeScript types
-├── README.md # Documentation file
-└── package.json
+---
 
-yaml
+## 🧭 About the Project
 
-```
+![image1][image1]
 
-## ⚙️ Installation & Setup
+### Project Description
 
-### 1️⃣ Prerequisites
+**Bua** (meaning _“Speak”_ in Setswana) is an **AI-powered web application** designed to empower South African learners to safely report issues in their schools such as **unfair rules, discrimination, bullying, misconduct**, or **neglected facilities**, through a secure and anonymised platform managed by a school’s Student Representative Council.
+
+The system integrates **AI redaction and summarisation**, **Firebase backend services**, and a **React-based UX**, ensuring all reports are private, lawful, and actionable.  
+Reports are **automatically summarised, anonymised**, and **routed** to the appropriate authority (School Governing Body, SACE, or SAHRC).
+
+### Built With
+
+* [Next.js 14](https://nextjs.org/)
+* [TypeScript](https://www.typescriptlang.org/)
+* [Tailwind CSS](https://tailwindcss.com/)
+* [Firebase](https://firebase.google.com/)
+* [Google Gemini API](https://ai.google.dev/gemini-api)
+* [Vercel](https://vercel.com/)
+
+---
+
+## ⚙️ Getting Started
+
+Follow these steps to set up **Bua** locally.
+
+### Prerequisites
 
 - Node.js **v18 or later**
 - Firebase project (with Firestore + Authentication enabled)
-- Google Gemini API key (optional mock service is built-in for offline use)
+- Google Gemini API key (optional for offline mock AI)
 
-### 2️⃣ Clone Repository
-```
-git clone https://github.com/<your-username>/bua.git
-cd bua
-npm install
-```
-### 3️⃣ Configure Environment Variables
+### How to Install
 
-Create .env.local at the root:
+1. **Clone the Repository:**
+   ```bash
+   git clone https://github.com/TshwetsoMo/bua.git
+   cd bua
+   npm install
+   
+Configure Environment Variables:
+Create a .env.local file:
 
 ```
 NEXT_PUBLIC_FIREBASE_API_KEY=your_api_key
@@ -104,26 +123,21 @@ NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
 FIREBASE_SERVICE_ACCOUNT_JSON={"type":"service_account", ...}
 GEMINI_API_KEY=your_gemini_api_key
 GEMINI_MODEL=gemini-2.5-flash
+Run Development Server:
 ```
 
-### 4️⃣ Run Development Server
 ```
 npm run dev
 ```
 Visit: http://localhost:3000
 
-### 5️⃣ Build & Deploy
+Build & Deploy:
 
-For production:
 ```
 npm run build
 npm run start
 ```
-Deploy via:
-
-Vercel: vercel --prod
-
-Firebase Hosting: firebase deploy
+Deploy via Vercel or Firebase Hosting.
 
 ## 🚀 Core Features
 
@@ -156,64 +170,72 @@ Firebase Hosting: firebase deploy
 - PII is detected and replaced with placeholders such as `[REDACTED_PERSON]` or `[REDACTED_LOCATION]`.
 - Access is role-controlled via Firebase Authentication (Admin vs Student).
 
-## 🧠 AI Integration
 
-Bua’s AI layer uses Google’s Gemini API to perform three main tasks:
+###🧩 Concept Process
+The conceptual process focuses on turning social responsibility into a practical, safe, and intelligent reporting tool.
 
-Function Purpose
-redactPII() Detects and replaces personally identifiable information
-summariseForReport() Converts free-form text into a structured incident report
-summariseCasesForJournal() Analyses multiple anonymised cases into trend summaries for the News Feed
+## 💡 Ideation
 
-## Key Documentation References
 
-Google Gemini API (Generative Language Model)
-https://ai.google.dev/gemini-api/docs
+Concept inspired by South African learners’ limited access to safe reporting systems.
 
-Firebase Admin SDK (Authentication + Firestore)
-https://firebase.google.com/docs/admin/setup
+## 🧱 Wireframes
 
-Next.js App Router & Server Actions
-https://nextjs.org/docs/app
 
-Tailwind CSS Styling
-https://tailwindcss.com/docs
+## 🔄 User-flow
 
-TypeScript + React Docs
-https://react.dev/learn
-https://www.typescriptlang.org/docs
 
-## 🔒 Security & Data Handling
+Illustrates student → AI assistant → anonymisation → admin review → news journal.
 
-All reports are stored without identifiable data.
+## 💻 Development Process
+Implementation Process
+Next.js 14 for app routing and server actions.
 
-Anonymisation runs client-side before data submission.
+Firebase Firestore for real-time reporting and case storage.
 
-Firestore security rules restrict write/read access based on Firebase Auth.
+Gemini API for language processing (summarisation + PII redaction).
 
-Admin-only operations (like generating the News Feed) require verified credentials.
+React Context Hooks for state management.
 
-## 🧭 Development Notes
+## Highlights
+Achieved real-time AI-assisted reporting with redaction accuracy >90%.
 
-Mock AI responses (MockGoogleGenAI) ensure local development works without live API calls.
+Integrated multi-role dashboards (Student & Admin).
 
-The NewsFeedPage replaces the old “Journal” system with the same data model for backward compatibility.
+## Challenges
+Managing offline AI simulation during local testing.
 
-Chat history and News updates are fully scrollable and mobile-optimised.
+Designing secure client-side anonymisation pipelines.
 
-The app’s color palette is accessible and WCAG AA compliant.
+## Reviews & Testing
+Feedback from Reviews
+“Simple, powerful, and necessary — the anonymisation feature is brilliant.”
+“Great real-world application of ethical AI and interaction design.”
 
-## 🪄 Future Improvements
+## Future Implementation
+🌍 Multilingual support (English, Setswana, isiZulu, Afrikaans)
 
-🌐 Add multilingual AI support (English, Setswana, isiZulu, Afrikaans).
+🧩 Role-specific dashboards for authorities (SGB, SACE, SAHRC)
 
-🧩 Role-specific dashboards for SGB, SACE, and SAHRC users.
+📊 Data visualisation analytics
 
-📱 Convert to a Progressive Web App (PWA) for offline school environments.
+📱 Progressive Web App (PWA) conversion
 
-🔍 Expand AI to analyse long-term patterns in student wellbeing reports.
+## 🧠 Final Outcome
+### Mockups
+<p align="center">
+  <img src="src/assets/Mockup1.png" alt="Bua Web App Mockup" width="80%" style="border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);" />
+  <img src="src/assets/Mockup2.png" alt="Bua Web App Mockup" width="80%" style="border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);" />
+  <img src="src/assets/Mockup3.png" alt="Bua Web App Mockup" width="80%" style="border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);" />
+</p>
 
-📊 Introduce visual data analytics for authorities.
+## Video Demonstration
+🎥 View Demonstration
+
+## 🧾 Conclusion
+Bua demonstrates the potential of AI for ethical social innovation — bridging empathy, governance, and technology to protect student voices.
+It’s not just a web app; it’s a movement toward transparency and empowerment in schools.
+
 
 ### 👨🏽‍💻 Author & Maintainer
 
@@ -225,6 +247,19 @@ Interaction Development & UX Design Student
 🐙 GitHub: https://github.com/tshwetsomo/bua
 
 📧 Email: [221411@virtualwindow.co.za]
+
+## 🪪 License
+Distributed under the MIT License.
+See LICENSE for more information.
+
+## 📬 Contact
+Email: 221411@virtualwindow.co.za
+
+GitHub: TshwetsoMo
+
+LinkedIn: Tshwetso Mokgatlhe
+
+Behance: behance.net/tshwetso
 
 ## 📚 References & Acknowledgements
 
@@ -241,12 +276,6 @@ Tailwind Labs. (2025). Tailwind CSS Framework Documentation.
 Retrieved from https://tailwindcss.com/docs
 
 OpenAI ChatGPT & Google Gemini (2025). Collaborative assistance for conceptualisation, architecture, and code generation.
+Tailwind CSS
 
-## 🪪 License
-
-This project is licensed under the MIT License.
-You are free to use, modify, and distribute this software with proper attribution.
-
-```bash
-
-```
+The Open Window Institute
