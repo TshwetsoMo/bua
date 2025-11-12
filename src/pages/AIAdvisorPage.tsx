@@ -55,12 +55,31 @@ const AIAdvisorPage: React.FC<Props> = ({ onNavigate }) => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isLoading]);
 
+  // Track the current uid so we can detect account switches (clear stale chatId)
+  const [currentUid, setCurrentUid] = useState<string | null>(null);
+
   // Keep firebase auth state
   useEffect(() => {
     const auth = getAuth();
     const unsub = onAuthStateChanged(auth, (u) => setFirebaseUser(u));
     return () => unsub();
   }, []);
+
+  // When user changes, nuke any chatId from the previous user to prevent 403
+  useEffect(() => {
+    const uid = firebaseUser?.uid ?? null;
+    if (uid && currentUid === null) {
+      setCurrentUid(uid);
+      return;
+    }
+    if (uid && currentUid && uid !== currentUid) {
+      localStorage.removeItem(LOCAL_CHAT_KEY);
+      setActiveChatId(null);
+      setMessages([{ id: "init", sender: "ai", text: INIT_TEXT }]);
+      setError(null);
+      setCurrentUid(uid);
+    }
+  }, [firebaseUser, currentUid]);
 
   // Subscribe to user's chat list
   useEffect(() => {
@@ -75,9 +94,13 @@ const AIAdvisorPage: React.FC<Props> = ({ onNavigate }) => {
         const data = d.data() as any;
         return {
           id: d.id,
-          title: data.title || data.history?.find((h: any) => h.role === "user")?.text?.slice(0, 40),
+          title:
+            data.title ||
+            data.history?.find((h: any) => h.role === "user")?.text?.slice(0, 40),
           updatedAt: data.updatedAt ?? null,
-          lastUser: data.history?.slice().reverse().find((h: any) => h.role === "user")?.text,
+          lastUser:
+            data.history?.slice().reverse().find((h: any) => h.role === "user")
+              ?.text,
         };
       });
       setChats(items);
@@ -132,7 +155,7 @@ const AIAdvisorPage: React.FC<Props> = ({ onNavigate }) => {
 
   const pushMessage = (m: ChatMessage) => setMessages((prev) => [...prev, m]);
 
-  // Resume or load selected chat history
+  // Resume or load selected chat history (handles 403 -> fresh)
   const loadChat = async (chatId: string) => {
     if (!firebaseUser) return;
     setIsLoading(true);
@@ -148,6 +171,16 @@ const AIAdvisorPage: React.FC<Props> = ({ onNavigate }) => {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ chatId, message: "" }),
       });
+
+      if (res.status === 403) {
+        // Chat belongs to a different user; drop stale id and start fresh
+        localStorage.removeItem(LOCAL_CHAT_KEY);
+        setActiveChatId(null);
+        setMessages([{ id: "init", sender: "ai", text: INIT_TEXT }]);
+        setError("Couldn't resume that conversation, so we started a new one.");
+        return;
+      }
+
       const data = await res.json().catch(() => ({ error: "Invalid JSON" }));
       if (!res.ok || data?.error) {
         setError(data?.error ?? "Failed to load chat.");
@@ -217,8 +250,7 @@ const AIAdvisorPage: React.FC<Props> = ({ onNavigate }) => {
     setIsLoading(true);
     setError(null);
 
-    const doCall = async (idToken: string) => {
-      const chatId = localStorage.getItem(LOCAL_CHAT_KEY) || null;
+    const callWith = async (idToken: string, chatId: string | null) => {
       return fetch("/api/ai/gemini/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
@@ -234,9 +266,11 @@ const AIAdvisorPage: React.FC<Props> = ({ onNavigate }) => {
         return;
       }
 
-      let res = await doCall(token);
-      let data = await res.json().catch(() => ({ error: "Invalid JSON from server" }));
-      if (res.status === 401 || data?.error === "Invalid or expired ID token") {
+      const initialChatId = localStorage.getItem(LOCAL_CHAT_KEY) || null;
+      let res = await callWith(token, initialChatId);
+
+      // If token invalid, refresh once
+      if (res.status === 401) {
         token = await getIdToken(true);
         if (!token) {
           setError("Unable to refresh ID token. Please sign in again.");
@@ -248,9 +282,17 @@ const AIAdvisorPage: React.FC<Props> = ({ onNavigate }) => {
           setIsLoading(false);
           return;
         }
-        res = await doCall(token);
-        data = await res.json().catch(() => ({ error: "Invalid JSON from server (retry)" }));
+        res = await callWith(token, initialChatId);
       }
+
+      // If forbidden (ownership mismatch), drop chatId and retry as new chat
+      if (res.status === 403) {
+        localStorage.removeItem(LOCAL_CHAT_KEY);
+        setActiveChatId(null);
+        res = await callWith(token, null);
+      }
+
+      const data = await res.json().catch(() => ({ error: "Invalid JSON from server" }));
 
       if (!res.ok || data?.error) {
         const msg = data?.error ?? "AI service error";

@@ -1,6 +1,6 @@
 // bua/pages/CaseTrackerPage.tsx
-import React, { useState } from "react";
-import type { Case, CaseStatus, User } from "../../types";
+import React, { useMemo, useState } from "react";
+import type { Case, CaseMessage, CaseStatus, User } from "../../types";
 import { CaseStatus as CaseStatusEnum } from "../../types";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
@@ -11,11 +11,34 @@ import { Select } from "@/components/Select";
 import { db } from "../lib/firebase/client";
 import { deleteDoc, doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 
-interface CaseTrackerPageProps {
-  cases: Case[];
-  currentUser: User;
+// --- Utilities ---
+function asDate(v: any): Date {
+  if (!v) return new Date(0);
+  if (v instanceof Date) return v;
+  if (typeof v?.toDate === "function") return v.toDate();
+  if (typeof v === "number") return new Date(v);
+  return new Date(v);
 }
 
+function uniqueById<T extends { id: string }>(arr: T[] = []): T[] {
+  const map = new Map<string, T>();
+  for (const item of arr) {
+    if (!map.has(item.id)) map.set(item.id, item);
+  }
+  return Array.from(map.values());
+}
+
+function normalizeHistory(history: CaseMessage[] = []): CaseMessage[] {
+  const uniq = uniqueById(history);
+  return uniq
+    .map((h) => ({
+      ...h,
+      timestamp: asDate(h.timestamp),
+    }))
+    .sort((a, b) => asDate(a.timestamp).getTime() - asDate(b.timestamp).getTime());
+}
+
+// --- Confirm modal ---
 const ConfirmModal: React.FC<{
   open: boolean;
   title?: string;
@@ -32,29 +55,48 @@ const ConfirmModal: React.FC<{
         <h3 className="text-lg font-semibold mb-2 text-slate-800 dark:text-slate-100">{title}</h3>
         <p className="text-sm text-slate-600 dark:text-slate-300 mb-4 whitespace-pre-wrap">{message}</p>
         <div className="flex justify-end gap-3">
-          <Button variant="secondary" onClick={onCancel} disabled={loading}>Cancel</Button>
-          <Button onClick={onConfirm} disabled={loading}>{loading ? "Working..." : "Confirm"}</Button>
+          <Button variant="secondary" onClick={onCancel} disabled={loading}>
+            Cancel
+          </Button>
+          <Button onClick={onConfirm} disabled={loading}>
+            {loading ? "Working..." : "Confirm"}
+          </Button>
         </div>
       </div>
     </div>
   );
 };
 
+interface CaseTrackerPageProps {
+  cases: Case[];
+  currentUser: User;
+}
+
 const CaseTrackerPage: React.FC<CaseTrackerPageProps> = ({ cases, currentUser }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editCategory, setEditCategory] = useState("");
   const [editDescription, setEditDescription] = useState("");
-  const [editNote, setEditNote] = useState(""); // appended to history
+  const [editNote, setEditNote] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // only show current user's cases
-  const studentCases = cases
-    .filter((c) => c.studentId === currentUser.id)
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  // Filter to current user's cases and dedupe
+  const myCases = useMemo(
+    () => uniqueById((cases || []).filter((c) => c.studentId === currentUser.id)),
+    [cases, currentUser.id]
+  );
+
+  // Sort newest first
+  const studentCases = useMemo(
+    () =>
+      [...myCases].sort(
+        (a, b) => asDate(b.createdAt).getTime() - asDate(a.createdAt).getTime()
+      ),
+    [myCases]
+  );
 
   const getStatusColor = (status: CaseStatus) => {
     switch (status) {
@@ -75,7 +117,6 @@ const CaseTrackerPage: React.FC<CaseTrackerPageProps> = ({ cases, currentUser })
     setEditingId(c.id);
     setEditTitle(c.title);
     setEditCategory(c.category);
-    // prefer description if available else redactedDescription
     setEditDescription(c.description || c.redactedDescription || "");
     setEditNote("");
     setError(null);
@@ -96,43 +137,34 @@ const CaseTrackerPage: React.FC<CaseTrackerPageProps> = ({ cases, currentUser })
     try {
       const caseRef = doc(db, "cases", c.id);
 
-      // prepare history entry if user provided an edit note
       const historyEntry = editNote.trim()
         ? {
             id: `msg${Date.now()}`,
-            sender: "Student",
+            sender: "Student" as const,
             text: editNote.trim(),
-            timestamp: new Date(), // client timestamp for array element
+            timestamp: new Date(),
           }
         : null;
 
-      // build new history array client-side to preserve ordering (onSnapshot listener updates UI)
-      const newHistory = [
-        ...(c.history?.map((h) => ({
-          id: h.id,
-          sender: h.sender,
-          text: h.text,
-          timestamp: h.timestamp instanceof Date ? h.timestamp : new Date(h.timestamp),
-        })) ?? []),
-        ...(historyEntry ? [historyEntry] : []),
-      ];
+      const currentHistory = normalizeHistory(c.history);
+      const newHistory = historyEntry
+        ? normalizeHistory([...currentHistory, historyEntry])
+        : currentHistory;
 
       const updates: Record<string, any> = {
         title: editTitle,
         category: editCategory,
         description: editDescription,
         history: newHistory,
-        updatedAt: serverTimestamp(), // top-level server timestamp is fine
+        updatedAt: serverTimestamp(),
       };
 
       await updateDoc(caseRef, updates);
-
-      // clear edit state; onSnapshot will refresh the list and selected detail if any
       cancelEdit();
     } catch (err: any) {
       console.error("Failed to save case edit:", err);
-      if (err?.code === "permission-denied" || String(err?.message).toLowerCase().includes("permission")) {
-        setError("You don't have permission to edit this case. Only the case owner or an admin may edit.");
+      if (err?.code === "permission-denied") {
+        setError("You don't have permission to edit this case.");
       } else {
         setError("Failed to save changes. Please try again.");
       }
@@ -141,49 +173,23 @@ const CaseTrackerPage: React.FC<CaseTrackerPageProps> = ({ cases, currentUser })
     }
   };
 
-  const confirmDelete = (id: string) => {
-    setDeletingId(id);
-    setError(null);
-  };
+  const confirmDelete = (id: string) => setDeletingId(id);
 
   const doDelete = async () => {
     if (!deletingId) return;
-    if (!currentUser?.id) {
-      setError("You must be signed in to delete a case.");
-      return;
-    }
-
     setIsDeleting(true);
-    setError(null);
     try {
       const caseRef = doc(db, "cases", deletingId);
-
-      // Quick client-side ownership check for friendliness (server rules still authoritative)
       const snap = await getDoc(caseRef);
-      if (!snap.exists()) {
-        setError("Case not found.");
-        setDeletingId(null);
-        setIsDeleting(false);
-        return;
-      }
+      if (!snap.exists()) throw new Error("Case not found.");
       const data = snap.data() as any;
-      if (data.studentId !== currentUser.id) {
-        // Optionally detect admin via users doc - but server will enforce admin rights.
-        setError("You are not the owner of this case and cannot delete it.");
-        setDeletingId(null);
-        setIsDeleting(false);
-        return;
-      }
-
+      if (data.studentId !== currentUser.id)
+        throw new Error("You are not the owner of this case.");
       await deleteDoc(caseRef);
       setDeletingId(null);
     } catch (err: any) {
       console.error("Failed to delete case:", err);
-      if (err?.code === "permission-denied" || String(err?.message).toLowerCase().includes("permission")) {
-        setError("You don't have permission to delete this case. Only the case owner or an admin may delete cases.");
-      } else {
-        setError("Failed to delete case. Please try again.");
-      }
+      setError(err.message || "Failed to delete case.");
     } finally {
       setIsDeleting(false);
     }
@@ -191,7 +197,9 @@ const CaseTrackerPage: React.FC<CaseTrackerPageProps> = ({ cases, currentUser })
 
   return (
     <div className="max-w-4xl mx-auto">
-      <h1 className="text-3xl font-bold text-slate-800 dark:text-white text-center mb-6">My Cases</h1>
+      <h1 className="text-3xl font-bold text-slate-800 dark:text-white text-center mb-6">
+        My Cases
+      </h1>
 
       {error && <p className="text-red-500 text-sm mb-4 text-center">{error}</p>}
 
@@ -199,6 +207,9 @@ const CaseTrackerPage: React.FC<CaseTrackerPageProps> = ({ cases, currentUser })
         {studentCases.length > 0 ? (
           studentCases.map((c) => {
             const isEditing = editingId === c.id;
+            const createdAt = asDate(c.createdAt);
+            const safeHistory = normalizeHistory(c.history);
+
             return (
               <Card key={c.id}>
                 <div className="flex justify-between items-start">
@@ -207,13 +218,11 @@ const CaseTrackerPage: React.FC<CaseTrackerPageProps> = ({ cases, currentUser })
                       <>
                         <Input
                           label="Title"
-                          id={`title-${c.id}`}
                           value={editTitle}
                           onChange={(e) => setEditTitle(e.target.value)}
                         />
                         <Select
                           label="Category"
-                          id={`category-${c.id}`}
                           value={editCategory}
                           onChange={(e) => setEditCategory(e.target.value)}
                         >
@@ -225,14 +234,12 @@ const CaseTrackerPage: React.FC<CaseTrackerPageProps> = ({ cases, currentUser })
                         </Select>
                         <Textarea
                           label="Description"
-                          id={`desc-${c.id}`}
                           rows={4}
                           value={editDescription}
                           onChange={(e) => setEditDescription(e.target.value)}
                         />
                         <Textarea
                           label="Optional note to add to history"
-                          id={`note-${c.id}`}
                           rows={2}
                           value={editNote}
                           onChange={(e) => setEditNote(e.target.value)}
@@ -241,16 +248,23 @@ const CaseTrackerPage: React.FC<CaseTrackerPageProps> = ({ cases, currentUser })
                           <Button onClick={() => saveEdit(c)} disabled={isSaving}>
                             {isSaving ? "Saving..." : "Save"}
                           </Button>
-                          <Button variant="secondary" onClick={cancelEdit} disabled={isSaving}>
+                          <Button
+                            variant="secondary"
+                            onClick={cancelEdit}
+                            disabled={isSaving}
+                          >
                             Cancel
                           </Button>
                         </div>
                       </>
                     ) : (
                       <>
-                        <h2 className="text-lg font-semibold text-slate-800 dark:text-white">{c.title}</h2>
+                        <h2 className="text-lg font-semibold text-slate-800 dark:text-white">
+                          {c.title}
+                        </h2>
                         <p className="text-sm text-slate-500 dark:text-slate-400">
-                          Category: {c.category} | Submitted: {new Date(c.createdAt).toLocaleDateString()}
+                          Category: {c.category} | Submitted:{" "}
+                          {createdAt.toLocaleDateString()}
                         </p>
                       </>
                     )}
@@ -277,20 +291,28 @@ const CaseTrackerPage: React.FC<CaseTrackerPageProps> = ({ cases, currentUser })
                 </div>
 
                 <div className="mt-4 border-t border-slate-200 dark:border-slate-700 pt-4">
-                  <h3 className="font-semibold mb-2 text-slate-700 dark:text-slate-300">History</h3>
+                  <h3 className="font-semibold mb-2 text-slate-700 dark:text-slate-300">
+                    History
+                  </h3>
                   <ul className="space-y-2">
-                    {c.history.map((h) => (
+                    {safeHistory.map((h) => (
                       <li key={h.id} className="text-sm text-slate-600 dark:text-slate-400">
                         <span className="font-semibold">{h.sender}:</span> {h.text}{" "}
-                        <span className="text-xs italic">({new Date(h.timestamp).toLocaleString()})</span>
+                        <span className="text-xs italic">
+                          ({asDate(h.timestamp).toLocaleString()})
+                        </span>
                       </li>
                     ))}
                   </ul>
 
                   {c.resolutionNote && (
                     <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/50 rounded-md">
-                      <h4 className="font-semibold text-green-800 dark:text-green-300">Resolution Note</h4>
-                      <p className="text-sm text-green-700 dark:text-green-400">{c.resolutionNote}</p>
+                      <h4 className="font-semibold text-green-800 dark:text-green-300">
+                        Resolution Note
+                      </h4>
+                      <p className="text-sm text-green-700 dark:text-green-400">
+                        {c.resolutionNote}
+                      </p>
                     </div>
                   )}
                 </div>
@@ -299,7 +321,9 @@ const CaseTrackerPage: React.FC<CaseTrackerPageProps> = ({ cases, currentUser })
           })
         ) : (
           <Card className="text-center">
-            <p className="text-slate-500 dark:text-slate-400">You have not submitted any cases yet.</p>
+            <p className="text-slate-500 dark:text-slate-400">
+              You have not submitted any cases yet.
+            </p>
           </Card>
         )}
       </div>

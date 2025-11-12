@@ -25,7 +25,7 @@ interface JournalPageProps {
 }
 
 // Tunables
-const MAX_CASES = 2;             // ⬅️ use only the latest 2 resolved cases
+const MAX_CASES = 2;             // use only the latest 2 resolved cases
 const RECENT_JOURNAL_WINDOW = 2; // guard against repetition with the last 2 entries
 
 // Helper builds anonymized, non-link evidence metadata
@@ -67,9 +67,18 @@ function buildAnonymisedEvidenceMetadata(data: any): { evidenceCount: number; ev
   return { evidenceCount: count, evidenceTypes: Array.from(types) };
 }
 
-// Simple normaliser to detect exact duplicates after generation
+// Normalisers & similarity
 function normalise(str: string): string {
   return (str || "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+function jaccardSimilarity(a: string, b: string): number {
+  const A = new Set(normalise(a).split(/\W+/).filter(Boolean));
+  const B = new Set(normalise(b).split(/\W+/).filter(Boolean));
+  if (A.size === 0 && B.size === 0) return 1;
+  let inter = 0;
+  for (const t of A) if (B.has(t)) inter++;
+  const union = A.size + B.size - inter;
+  return union === 0 ? 0 : inter / union;
 }
 
 const JournalPage: React.FC<JournalPageProps> = ({ currentUser }) => {
@@ -109,14 +118,14 @@ const JournalPage: React.FC<JournalPageProps> = ({ currentUser }) => {
     setSuccessMessage(null);
 
     if (currentUser.role !== RoleEnum.Admin) {
-      setError("Only admins can generate journal entries.");
+      setError("Only admins can generate news entries.");
       return;
     }
 
     setIsGenerating(true);
 
     try {
-      // 0) Load last few journal entries to avoid repetition
+      // 0) Load last few news entries to avoid repetition
       const recentJournalQuery = query(
         collection(db, "journal"),
         orderBy("publishedAt", "desc"),
@@ -131,10 +140,9 @@ const JournalPage: React.FC<JournalPageProps> = ({ currentUser }) => {
           relatedCaseIds: Array.isArray(data.relatedCaseIds) ? data.relatedCaseIds.map(String) : [],
         };
       });
-
       const lastEntry = recentJournal[0];
 
-      // 1) Fetch the most recent resolved cases (fetch more than needed to allow filtering)
+      // 1) Fetch the most recent resolved cases (get more to allow filtering)
       const casesQuery = query(
         collection(db, "cases"),
         where("status", "==", CaseStatusEnum.Resolved),
@@ -144,7 +152,7 @@ const JournalPage: React.FC<JournalPageProps> = ({ currentUser }) => {
       const snap = await getDocs(casesQuery);
 
       if (snap.empty) {
-        setError("No resolved cases found to summarize.");
+        setError("No resolved cases found to summarise.");
         setIsGenerating(false);
         return;
       }
@@ -185,11 +193,8 @@ const JournalPage: React.FC<JournalPageProps> = ({ currentUser }) => {
         });
       });
 
-      // 2) Avoid repetition: skip cases used in recent journal entries
-      const usedRecently = new Set<string>(
-        recentJournal.flatMap((j) => j.relatedCaseIds)
-      );
-
+      // 2) Avoid repetition: skip cases already used in recent entries
+      const usedRecently = new Set<string>(recentJournal.flatMap((j) => j.relatedCaseIds));
       const uniqueRecent = resolvedCasesAll.filter((c) => !usedRecently.has(c.id));
       const picked: Case[] = uniqueRecent.slice(0, MAX_CASES);
 
@@ -203,23 +208,18 @@ const JournalPage: React.FC<JournalPageProps> = ({ currentUser }) => {
       }
 
       if (picked.length === 0) {
-        setError("No new cases to summarise for the journal right now.");
+        setError("No new cases to summarise for the news feed right now.");
         setIsGenerating(false);
         return;
       }
 
-      // Guard: if picked cases equal the last entry's relatedCaseIds, abort
-      if (lastEntry) {
-        const lastSet = new Set(lastEntry.relatedCaseIds);
-        const pickedSet = new Set(picked.map((c) => c.id));
-        const sameSize = lastSet.size === pickedSet.size;
-        const sameMembers = sameSize && [...pickedSet].every((id) => lastSet.has(id));
-        if (sameMembers) {
-          setError("New journal would repeat the same set of cases as the last entry. Try later when new cases are available.");
-          setIsGenerating(false);
-          return;
-        }
-      }
+      // Guard: if picked cases equal the last entry's relatedCaseIds, we still allow,
+      // but only block if the generated text is almost identical (>0.98 Jaccard)
+      const pickedIds = picked.map((c) => c.id);
+      const sameAsLast =
+        !!lastEntry &&
+        lastEntry.relatedCaseIds.length === pickedIds.length &&
+        pickedIds.every((id) => lastEntry.relatedCaseIds.includes(id));
 
       // 3) Summarise (only pass anonymised fields)
       const summary = await geminiService.summariseCasesForJournal(
@@ -230,28 +230,33 @@ const JournalPage: React.FC<JournalPageProps> = ({ currentUser }) => {
         }))
       );
 
-      // Post-gen duplicate content guard
-      if (lastEntry && normalise(summary) === normalise(lastEntry.content)) {
-        setError("Generated journal is too similar to the previous one. Please try again later when new cases arrive.");
-        setIsGenerating(false);
-        return;
+      // 4) Post-gen duplicate content guard (only block if same case set AND text ~identical)
+      if (lastEntry && sameAsLast) {
+        const sim = jaccardSimilarity(summary, lastEntry.content);
+        if (sim >= 0.98) {
+          setError(
+            "Generated news looks too similar to the previous one for the same cases. Try again after new cases arrive."
+          );
+          setIsGenerating(false);
+          return;
+        }
       }
 
-      // 4) Save journal entry
+      // 5) Save news entry
       const title = `News Update - ${new Date().toLocaleDateString()}`;
       const newDoc = {
         title,
         content: summary,
-        relatedCaseIds: picked.map((c) => c.id),
-        evidenceSummary: evidenceSummary.filter((e) => picked.some((c) => c.id === e.caseId)),
+        relatedCaseIds: pickedIds,
+        evidenceSummary: evidenceSummary.filter((e) => pickedIds.includes(e.caseId)),
         publishedAt: serverTimestamp(),
       };
 
       await addDoc(collection(db, "journal"), newDoc);
-      setSuccessMessage("Journal entry generated successfully (anonymised, recent cases).");
+      setSuccessMessage("News entry generated successfully (anonymised, recent cases).");
     } catch (err) {
-      console.error("Error generating journal entry:", err);
-      setError("Failed to generate journal entry. Please try again.");
+      console.error("Error generating news entry:", err);
+      setError("Failed to generate news entry. Please try again.");
     } finally {
       setIsGenerating(false);
       setTimeout(() => setSuccessMessage(null), 4000);
@@ -298,7 +303,7 @@ const JournalPage: React.FC<JournalPageProps> = ({ currentUser }) => {
 
         {sortedEntries.length === 0 && (
           <Card>
-            <p className="text-slate-500">No journal entries yet.</p>
+            <p className="text-slate-500">No entries yet.</p>
           </Card>
         )}
       </div>
@@ -307,4 +312,3 @@ const JournalPage: React.FC<JournalPageProps> = ({ currentUser }) => {
 };
 
 export default JournalPage;
-

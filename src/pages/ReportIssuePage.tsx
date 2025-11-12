@@ -18,7 +18,6 @@ interface ReportIssuePageProps {
   onNavigate: (page: string) => void;
   context: any;
   currentUser: User;
-  addCase?: (c: Case) => Promise<void>;
 }
 
 /** Helper to cap a string for title */

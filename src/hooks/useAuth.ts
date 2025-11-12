@@ -11,18 +11,18 @@ import { auth, db } from "../lib/firebase/client";
 type AuthPage = "signin" | "signup";
 
 function normalizeRole(roleFromDoc: unknown): Role {
-  // Handle numbers, numeric strings, and string labels like "Admin"/"Student"
+  
   if (typeof roleFromDoc === "number") {
     return roleFromDoc === Role.Admin ? Role.Admin : Role.Student;
   }
   if (typeof roleFromDoc === "string") {
     const lower = roleFromDoc.toLowerCase().trim();
-    // numeric string?
+    
     const asNum = Number.parseInt(roleFromDoc, 10);
     if (!Number.isNaN(asNum)) {
       return asNum === Role.Admin ? Role.Admin : Role.Student;
     }
-    // word label?
+    
     if (lower === "admin") return Role.Admin;
     if (lower === "student") return Role.Student;
   }

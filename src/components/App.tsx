@@ -191,9 +191,7 @@ export default function App({ currentUser, onSignOut }: AppProps) {
             onNavigate={handleNavigate}
             context={pageContext}
             currentUser={currentUser}
-            addCase={async (newCase) => {
-              await addCase(newCase);
-            }}
+            
           />
         );
       case "tracker":

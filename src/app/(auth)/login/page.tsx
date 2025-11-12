@@ -81,7 +81,7 @@ const SignInPage: React.FC<SignInPageProps> = ({ onSignUp, onSignInSuccess }) =>
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900">
       <div className="max-w-md w-full px-4">
-        <h1 className="text-3xl font-bold text-center text-blue-600 dark:text-blue-400 mb-2">Bua</h1>
+        <h1 className="text-3xl font-bold text-center text-blue-600 dark:text-blue-400 mb-2">BUA</h1>
         <h2 className="text-2xl font-bold text-center text-slate-800 dark:text-white mb-6">Sign In</h2>
 
         <Card>
