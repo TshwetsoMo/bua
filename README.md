@@ -5,8 +5,8 @@
 ![GitHub watchers](https://img.shields.io/github/watchers/TshwetsoMo/bua?color=%23000000)
 ![GitHub language count](https://img.shields.io/github/languages/count/TshwetsoMo/bua?color=%23000000)
 ![GitHub code size in bytes](https://img.shields.io/github/languages/code-size/TshwetsoMo/bua?color=%23000000)
-[![LinkedIn][linkedin-shield]][linkedin-url]
-[![Behance][behance-shield]][behance-url]
+![linkedin-shield](https://www.linkedin.com/in/tshwetso-mokgatlhe-a032672a0?utm_source=share&utm_campaign=share_via&utm_content=profile&utm_medium=ios_app)
+![behance-shield](https://www.behance.net/tshwetsmokgatl1)
 
 <!-- HEADER SECTION -->
 <h5 align="center" style="padding:0;margin:0;">Tshwetso K. Mokgatlhe</h5>
