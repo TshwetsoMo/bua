@@ -6,13 +6,12 @@
 ![GitHub language count](https://img.shields.io/github/languages/count/TshwetsoMo/bua?color=%23000000)
 ![GitHub code size in bytes](https://img.shields.io/github/languages/code-size/TshwetsoMo/bua?color=%23000000)
 [![LinkedIn][linkedin-shield]][linkedin-url]
-[![Instagram][instagram-shield]][instagram-url]
 [![Behance][behance-shield]][behance-url]
 
 <!-- HEADER SECTION -->
 <h5 align="center" style="padding:0;margin:0;">Tshwetso K. Mokgatlhe</h5>
 <h5 align="center" style="padding:0;margin:0;">221411</h5>
-<h6 align="center">DV300 & UX300 — Interaction Development & User Experience Design | 2025</h6>
+<h6 align="center">DV300 — Interaction Development | 2025</h6>
 </br>
 <p align="center">
 
@@ -27,7 +26,7 @@
       <a href="https://github.com/TshwetsoMo/bua"><strong>Explore the Docs »</strong></a>
    <br />
    <br />
-   <a href="#">View Demo</a>
+   <a href="https://drive.google.com/file/d/1sH8jl4zt3h09riQugHzEGphaC0Zqm9ry/view?usp=sharing">View Demo</a>
     ·
     <a href="https://github.com/TshwetsoMo/bua/issues">Report Bug</a>
     ·
@@ -38,34 +37,34 @@
 
 ## 📑 Table of Contents
 
-* [About the Project](#about-the-project)
-  * [Project Description](#project-description)
-  * [Built With](#built-with)
-* [Getting Started](#getting-started)
-  * [Prerequisites](#prerequisites)
-  * [How to Install](#how-to-install)
-* [Features and Functionality](#features-and-functionality)
-* [Concept Process](#concept-process)
-   * [Ideation](#ideation)
-   * [Wireframes](#wireframes)
-   * [User-flow](#user-flow)
-* [Development Process](#development-process)
-   * [Implementation Process](#implementation-process)
-        * [Highlights](#highlights)
-        * [Challenges](#challenges)
-   * [Reviews and Testing](#reviews-and-testing)
-        * [Feedback from Reviews](#feedback-from-reviews)
-        * [Unit Tests](#unit-tests)
-   * [Future Implementation](#future-implementation)
-* [Final Outcome](#final-outcome)
-    * [Mockups](#mockups)
-    * [Video Demonstration](#video-demonstration)
-* [Conclusion](#conclusion)
-* [Roadmap](#roadmap)
-* [Contributing](#contributing)
-* [License](#license)
-* [Contact](#contact)
-* [Acknowledgements](#acknowledgements)
+- [About the Project](#about-the-project)
+  - [Project Description](#project-description)
+  - [Built With](#built-with)
+- [Getting Started](#getting-started)
+  - [Prerequisites](#prerequisites)
+  - [How to Install](#how-to-install)
+- [Features and Functionality](#features-and-functionality)
+- [Concept Process](#concept-process)
+  - [Ideation](#ideation)
+  - [Wireframes](#wireframes)
+  - [User-flow](#user-flow)
+- [Development Process](#development-process)
+  - [Implementation Process](#implementation-process)
+    - [Highlights](#highlights)
+    - [Challenges](#challenges)
+  - [Reviews and Testing](#reviews-and-testing)
+    - [Feedback from Reviews](#feedback-from-reviews)
+    - [Unit Tests](#unit-tests)
+  - [Future Implementation](#future-implementation)
+- [Final Outcome](#final-outcome)
+  - [Mockups](#mockups)
+  - [Video Demonstration](#video-demonstration)
+- [Conclusion](#conclusion)
+- [Roadmap](#roadmap)
+- [Contributing](#contributing)
+- [License](#license)
+- [Contact](#contact)
+- [Acknowledgements](#acknowledgements)
 
 ---
 
@@ -82,12 +81,12 @@ Reports are **automatically summarised, anonymised**, and **routed** to the appr
 
 ### Built With
 
-* [Next.js 14](https://nextjs.org/)
-* [TypeScript](https://www.typescriptlang.org/)
-* [Tailwind CSS](https://tailwindcss.com/)
-* [Firebase](https://firebase.google.com/)
-* [Google Gemini API](https://ai.google.dev/gemini-api)
-* [Vercel](https://vercel.com/)
+- [Next.js 14](https://nextjs.org/)
+- [TypeScript](https://www.typescriptlang.org/)
+- [Tailwind CSS](https://tailwindcss.com/)
+- [Firebase](https://firebase.google.com/)
+- [Google Gemini API](https://ai.google.dev/gemini-api)
+- [Vercel](https://vercel.com/)
 
 ---
 
@@ -108,7 +107,9 @@ Follow these steps to set up **Bua** locally.
    git clone https://github.com/TshwetsoMo/bua.git
    cd bua
    npm install
-   
+
+   ```
+
 Configure Environment Variables:
 Create a .env.local file:
 
@@ -129,6 +130,7 @@ Run Development Server:
 ```
 npm run dev
 ```
+
 Visit: http://localhost:3000
 
 Build & Deploy:
@@ -137,6 +139,7 @@ Build & Deploy:
 npm run build
 npm run start
 ```
+
 Deploy via Vercel or Firebase Hosting.
 
 ## 🚀 Core Features
@@ -170,24 +173,21 @@ Deploy via Vercel or Firebase Hosting.
 - PII is detected and replaced with placeholders such as `[REDACTED_PERSON]` or `[REDACTED_LOCATION]`.
 - Access is role-controlled via Firebase Authentication (Admin vs Student).
 
-
 ###🧩 Concept Process
 The conceptual process focuses on turning social responsibility into a practical, safe, and intelligent reporting tool.
 
 ## 💡 Ideation
 
-
 Concept inspired by South African learners’ limited access to safe reporting systems.
 
 ## 🧱 Wireframes
 
-
 ## 🔄 User-flow
-
 
 Illustrates student → AI assistant → anonymisation → admin review → news journal.
 
 ## 💻 Development Process
+
 Implementation Process
 Next.js 14 for app routing and server actions.
 
@@ -198,21 +198,25 @@ Gemini API for language processing (summarisation + PII redaction).
 React Context Hooks for state management.
 
 ## Highlights
+
 Achieved real-time AI-assisted reporting with redaction accuracy >90%.
 
 Integrated multi-role dashboards (Student & Admin).
 
 ## Challenges
+
 Managing offline AI simulation during local testing.
 
 Designing secure client-side anonymisation pipelines.
 
 ## Reviews & Testing
+
 Feedback from Reviews
 “Simple, powerful, and necessary — the anonymisation feature is brilliant.”
 “Great real-world application of ethical AI and interaction design.”
 
 ## Future Implementation
+
 🌍 Multilingual support (English, Setswana, isiZulu, Afrikaans)
 
 🧩 Role-specific dashboards for authorities (SGB, SACE, SAHRC)
@@ -222,20 +226,23 @@ Feedback from Reviews
 📱 Progressive Web App (PWA) conversion
 
 ## 🧠 Final Outcome
+
 ### Mockups
+
 <p align="center">
   <img src="src/assets/Mockup1.png" alt="Bua Web App Mockup" width="80%" style="border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);" />
   <img src="src/assets/Mockup2.png" alt="Bua Web App Mockup" width="80%" style="border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);" />
   <img src="src/assets/Mockup3.png" alt="Bua Web App Mockup" width="80%" style="border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);" />
 </p>
 
-## Video Demonstration
-🎥 View Demonstration
+## 🎥 View Demonstration
+
+<a href="https://drive.google.com/file/d/1sH8jl4zt3h09riQugHzEGphaC0Zqm9ry/view?usp=sharing">View Demo</a>
 
 ## 🧾 Conclusion
+
 Bua demonstrates the potential of AI for ethical social innovation — bridging empathy, governance, and technology to protect student voices.
 It’s not just a web app; it’s a movement toward transparency and empowerment in schools.
-
 
 ### 👨🏽‍💻 Author & Maintainer
 
@@ -249,10 +256,12 @@ Interaction Development & UX Design Student
 📧 Email: [221411@virtualwindow.co.za]
 
 ## 🪪 License
+
 Distributed under the MIT License.
 See LICENSE for more information.
 
 ## 📬 Contact
+
 Email: 221411@virtualwindow.co.za
 
 GitHub: TshwetsoMo
