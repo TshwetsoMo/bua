@@ -103,6 +103,7 @@ Follow these steps to set up **Bua** locally.
 ### How to Install
 
 1. **Clone the Repository:**
+
    ```bash
    git clone https://github.com/TshwetsoMo/bua.git
    cd bua
@@ -251,7 +252,7 @@ Interaction Development & UX Design Student
 🎓 The Open Window Institute — Faculty of Creative Technologies
 📍 South Africa
 
-🐙 GitHub: https://github.com/tshwetsomo/bua
+🐙 GitHub: https://github.com/tshwetsomo
 
 📧 Email: [221411@virtualwindow.co.za]
 
@@ -268,7 +269,7 @@ GitHub: TshwetsoMo
 
 LinkedIn: Tshwetso Mokgatlhe
 
-Behance: behance.net/tshwetso
+Behance: https://www.behance.net/tshwetsmokgatl1
 
 ## 📚 References & Acknowledgements
 
