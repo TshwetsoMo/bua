@@ -20,6 +20,13 @@ import {
   where,
 } from "firebase/firestore";
 
+// ✅ Markdown rendering
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkBreaks from "remark-breaks";
+// If you ever need to allow raw HTML (not recommended unless you trust the source):
+// import rehypeRaw from "rehype-raw";
+
 const LOCAL_CHAT_KEY = "bua_chatId";
 const INIT_TEXT =
   "Hi! I'm Bua, your AI advisor. You can ask me anything about school life, from policies to clubs. How can I help you today?";
@@ -33,6 +40,61 @@ type ChatListItem = {
   title?: string;
   updatedAt?: { toDate?: () => Date } | string | null;
   lastUser?: string;
+};
+
+// Small helper: a styled Markdown renderer for chat bubbles
+const MessageMarkdown: React.FC<{ children: string }> = ({ children }) => {
+  return (
+    <ReactMarkdown
+      // Enable **bold**, _italics_, lists, tables, task-lists, autolinks, etc.
+      remarkPlugins={[remarkGfm, remarkBreaks]}
+      // If you enabled rehypeRaw above, add: rehypePlugins={[rehypeRaw]}
+      components={{
+        p: ({ node, ...props }) => (
+          <p className="mb-2 last:mb-0 leading-relaxed" {...props} />
+        ),
+        strong: ({ node, ...props }) => <strong {...props} />,
+        em: ({ node, ...props }) => <em {...props} />,
+        ul: ({ node, ...props }) => (
+          <ul className="list-disc pl-5 my-2 space-y-1" {...props} />
+        ),
+        ol: ({ node, ...props }) => (
+          <ol className="list-decimal pl-5 my-2 space-y-1" {...props} />
+        ),
+        li: ({ node, ...props }) => <li className="leading-relaxed" {...props} />,
+        a: ({ node, ...props }) => (
+          <a
+            className="underline decoration-blue-500 hover:decoration-blue-700"
+            target="_blank"
+            rel="noopener noreferrer"
+            {...props}
+          />
+        ),
+        code: ({ inline, children, ...props }) =>
+          inline ? (
+            <code
+              className="px-1 py-0.5 rounded bg-slate-200/70 dark:bg-slate-700/70 text-sm"
+              {...props}
+            >
+              {children}
+            </code>
+          ) : (
+            <code {...props}>{children}</code>
+          ),
+        pre: ({ node, ...props }) => (
+          <pre
+            className="my-2 max-w-full overflow-x-auto rounded-md bg-slate-900 text-slate-100 p-3 text-sm"
+            {...props}
+          />
+        ),
+        h1: ({ node, ...props }) => <h1 className="text-lg font-bold mb-2" {...props} />,
+        h2: ({ node, ...props }) => <h2 className="text-base font-bold mb-2" {...props} />,
+        h3: ({ node, ...props }) => <h3 className="text-base font-semibold mb-2" {...props} />,
+      }}
+    >
+      {children}
+    </ReactMarkdown>
+  );
 };
 
 const AIAdvisorPage: React.FC<Props> = ({ onNavigate }) => {
@@ -479,7 +541,9 @@ const AIAdvisorPage: React.FC<Props> = ({ onNavigate }) => {
                           : "bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-bl-none"
                       }`}
                     >
-                      <p className="whitespace-pre-wrap">{m.text}</p>
+                      {/* ✅ Render Markdown instead of plain text */}
+                      <MessageMarkdown>{m.text}</MessageMarkdown>
+
                       {isAI && m.text.toLowerCase().includes("start a report") && (
                         <Button className="mt-3" variant="secondary" onClick={startReportFromLastUser}>
                           Start a Report

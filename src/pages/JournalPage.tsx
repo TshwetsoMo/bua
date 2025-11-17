@@ -20,6 +20,11 @@ import {
   where,
 } from "firebase/firestore";
 
+// ⬇️ Markdown rendering
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkBreaks from "remark-breaks";
+
 interface JournalPageProps {
   currentUser: User;
 }
@@ -80,6 +85,91 @@ function jaccardSimilarity(a: string, b: string): number {
   const union = A.size + B.size - inter;
   return union === 0 ? 0 : inter / union;
 }
+
+/** ──────────────────────────────────────────────────────────────
+ * Markdown helpers
+ *  - Converts inline "• item; • item" into proper vertical lists
+ *  - Normalises numbered items like "1) " -> "1. "
+ *  - Keeps paragraphs and soft line breaks readable
+ * ────────────────────────────────────────────────────────────── */
+function toMarkdownFriendly(text: string): string {
+  if (!text) return "";
+
+  let t = String(text).replace(/\r\n/g, "\n").trim();
+
+  // If a colon is followed by bullets on the same line, make a newline before bullets.
+  // e.g., "Immediate considerations: • do X; • do Y." -> "Immediate considerations:\n- do X\n- do Y"
+  t = t.replace(/:\s*•\s*/g, ":\n- ");
+
+  // Any remaining inline bullets -> break to their own lines as list items
+  // e.g., "… gaps. • audit blocks; • issue circular." -> "\n- audit blocks\n- issue circular"
+  t = t.replace(/\s*•\s*/g, "\n- ");
+
+  // Normalise list markers that begin a line: "•", "▪", "–", "—", "-" -> "- "
+  t = t.replace(/^(?:\s*[•▪◦·\-–—]\s+)/gm, "- ");
+
+  // Numbered bullets "1) something" -> "1. something"
+  t = t.replace(/(^|\n)\s*(\d+)\)\s+/g, "$1$2. ");
+
+  // Collapse 3+ blank lines to max 2
+  t = t.replace(/\n{3,}/g, "\n\n");
+
+  return t;
+}
+
+/** Small renderer for News/Journal Markdown */
+const JournalMarkdown: React.FC<{ children: string }> = ({ children }) => {
+  const content = toMarkdownFriendly(children);
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm, remarkBreaks]}
+      components={{
+        p: ({ node, ...props }) => (
+          <p className="mb-2 last:mb-0 leading-relaxed" {...props} />
+        ),
+        strong: ({ node, ...props }) => <strong {...props} />,
+        em: ({ node, ...props }) => <em {...props} />,
+        ul: ({ node, ...props }) => (
+          <ul className="list-disc pl-5 my-2 space-y-1" {...props} />
+        ),
+        ol: ({ node, ...props }) => (
+          <ol className="list-decimal pl-5 my-2 space-y-1" {...props} />
+        ),
+        li: ({ node, ...props }) => <li className="leading-relaxed" {...props} />,
+        a: ({ node, ...props }) => (
+          <a
+            className="underline decoration-blue-500 hover:decoration-blue-700"
+            target="_blank"
+            rel="noopener noreferrer"
+            {...props}
+          />
+        ),
+        code: ({ inline, children, ...props }) =>
+          inline ? (
+            <code
+              className="px-1 py-0.5 rounded bg-slate-200/70 dark:bg-slate-700/70 text-sm"
+              {...props}
+            >
+              {children}
+            </code>
+          ) : (
+            <code {...props}>{children}</code>
+          ),
+        pre: ({ node, ...props }) => (
+          <pre
+            className="my-2 max-w-full overflow-x-auto rounded-md bg-slate-900 text-slate-100 p-3 text-sm"
+            {...props}
+          />
+        ),
+        h1: ({ node, ...props }) => <h1 className="text-lg font-bold mb-2" {...props} />,
+        h2: ({ node, ...props }) => <h2 className="text-base font-bold mb-2" {...props} />,
+        h3: ({ node, ...props }) => <h3 className="text-base font-semibold mb-2" {...props} />,
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  );
+};
 
 const JournalPage: React.FC<JournalPageProps> = ({ currentUser }) => {
   const [entries, setEntries] = useState<JournalEntry[]>([]);
@@ -297,7 +387,11 @@ const JournalPage: React.FC<JournalPageProps> = ({ currentUser }) => {
             <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
               Published on {new Date(entry.publishedAt).toLocaleDateString()}
             </p>
-            <p className="text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{entry.content}</p>
+
+            {/* Proper Markdown rendering with bullet normalisation */}
+            <div className="prose prose-slate dark:prose-invert max-w-none">
+              <JournalMarkdown>{entry.content}</JournalMarkdown>
+            </div>
           </Card>
         ))}
 
